@@ -21,6 +21,9 @@ import "os"
 import "reflect"
 import "unicode/utf8"
 import "fmt"
+import "bytes"
+import "encoding/binary"
+import "math"
 
 // MaxLoggers is the maximum number of different loggers that are allowed
 const MaxLoggers = 10240
@@ -97,25 +100,41 @@ func AddLogger(fmt string) LogHandle {
 	// save some kind of string format to the file
 	idx := atomic.AddUint32(curLoggersIdx, 1) - 1
 
-	loggers[idx] = parseLogLine(&fmt)
+	if idx >= MaxLoggers {
+		panic("Too many loggers")
+	}
+
+	l, segs := parseLogLine(fmt)
+	loggers[idx] = l
+
+	writeLogDataToFile(idx, l.kinds, segs)
 
 	return LogHandle(idx)
 }
 
-func parseLogLine(gold *string) logger {
+func parseLogLine(gold string) (logger, []string) {
 	// make a copy we can destroy
-	f := gold
+	tmp := gold
+	f := &tmp
 	var kinds []reflect.Kind
+	var segs []string
+	var curseg []rune
 
 	for len(*f) > 0 {
-		if next(f) != '%' {
+		if r := next(f); r != '%' {
+			curseg = append(curseg, r)
 			continue
 		}
 
 		// Literal % sign
-		if next(f) == '%' {
+		if peek(f) == '%' {
+			next(f)
+			curseg = append(curseg, '%')
 			continue
 		}
+
+		segs = append(segs, string(curseg))
+		curseg = curseg[:0]
 
 		var requireBrace bool
 
@@ -240,6 +259,9 @@ func parseLogLine(gold *string) logger {
 			default:
 				logpanic("Expecting either c64 or c128", gold)
 			}
+
+		default:
+			logpanic("Invalid replace sequence", gold)
 		}
 
 		if requireBrace {
@@ -251,7 +273,7 @@ func parseLogLine(gold *string) logger {
 
 	return logger{
 		kinds: kinds,
-	}
+	}, segs
 }
 
 func peek(s *string) rune {
@@ -275,9 +297,38 @@ func next(s *string) rune {
 	return r
 }
 
+func writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
+	buf := &bytes.Buffer{}
+	b := make([]byte, 4)
+
+	// write log identifier
+	binary.LittleEndian.PutUint32(b, idx)
+	buf.Write(b)
+
+	// write number of segments
+	binary.LittleEndian.PutUint32(b, uint32(len(segs)))
+	buf.Write(b)
+
+	// write out all the kinds. These are cast to a byte because their values all
+	// fit into a byte and it saves a little space
+	for _, k := range kinds {
+		buf.WriteByte(byte(k))
+	}
+
+	// write all the segments, lengths first then string bytes for each
+	for _, s := range segs {
+		binary.LittleEndian.PutUint32(b, uint32(len(s)))
+		buf.Write(b)
+		buf.WriteString(s)
+	}
+
+	// finally write all of it together to the output
+	w.Write(buf.Bytes())
+}
+
 // helper function to have consistently formatted panics and shorter code above
-func logpanic(msg string, gold *string) {
-	panic(fmt.Sprintf("Malformed log format string. %s.\n%s", msg, *gold))
+func logpanic(msg, gold string) {
+	panic(fmt.Sprintf("Malformed log format string. %s.\n%s", msg, gold))
 }
 
 // Log logs to the output stream for the logging package
@@ -285,8 +336,14 @@ func Log(handle LogHandle, args ...interface{}) error {
 	l := loggers[handle]
 
 	if len(l.kinds) != len(args) {
-		panic("Args do not match log line")
+		panic("Number of args does not match log line")
 	}
+
+	buf := &bytes.Buffer{}
+	b := make([]byte, 8)
+
+	binary.LittleEndian.PutUint32(b, uint32(handle))
+	buf.Write(b[:4])
 
 	for idx := range l.kinds {
 		if l.kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
@@ -294,7 +351,117 @@ func Log(handle LogHandle, args ...interface{}) error {
 		}
 
 		// write serialized version to writer
+		switch l.kinds[idx] {
+		case reflect.Bool:
+			if args[idx].(bool) {
+				buf.WriteByte(1)
+			} else {
+				buf.WriteByte(0)
+			}
+
+		case reflect.String:
+			s := args[idx].(string)
+			binary.LittleEndian.PutUint32(b, uint32(len(s)))
+			buf.Write(b[:4])
+			buf.WriteString(s)
+
+		// ints
+		case reflect.Int:
+			// Assume generic int is 64 bit
+			i := args[idx].(int)
+			binary.LittleEndian.PutUint64(b, uint64(i))
+			buf.Write(b)
+
+		case reflect.Int8:
+			i := args[idx].(int8)
+			buf.WriteByte(byte(i))
+
+		case reflect.Int16:
+			i := args[idx].(int16)
+			binary.LittleEndian.PutUint16(b, uint16(i))
+			buf.Write(b[:2])
+
+		case reflect.Int32:
+			i := args[idx].(int32)
+			binary.LittleEndian.PutUint32(b, uint32(i))
+			buf.Write(b[:4])
+
+		case reflect.Int64:
+			i := args[idx].(int64)
+			binary.LittleEndian.PutUint64(b, uint64(i))
+			buf.Write(b)
+
+		// uints
+		case reflect.Uint:
+			// Assume generic uint is 64 bit
+			i := args[idx].(uint)
+			binary.LittleEndian.PutUint64(b, uint64(i))
+			buf.Write(b)
+
+		case reflect.Uint8:
+			i := args[idx].(uint8)
+			buf.WriteByte(byte(i))
+
+		case reflect.Uint16:
+			i := args[idx].(uint16)
+			binary.LittleEndian.PutUint16(b, i)
+			buf.Write(b[:2])
+
+		case reflect.Uint32:
+			i := args[idx].(uint32)
+			binary.LittleEndian.PutUint32(b, i)
+			buf.Write(b[:4])
+
+		case reflect.Uint64:
+			i := args[idx].(uint64)
+			binary.LittleEndian.PutUint64(b, i)
+			buf.Write(b)
+
+		// floats
+		case reflect.Float32:
+			f := args[idx].(float32)
+			i := math.Float32bits(f)
+			binary.LittleEndian.PutUint32(b, i)
+			buf.Write(b)
+
+		case reflect.Float64:
+			f := args[idx].(float64)
+			i := math.Float64bits(f)
+			binary.LittleEndian.PutUint64(b, i)
+			buf.Write(b)
+
+		// complex
+		case reflect.Complex64:
+			c := args[idx].(complex64)
+
+			f := real(c)
+			i := math.Float32bits(f)
+			binary.LittleEndian.PutUint32(b, i)
+			buf.Write(b)
+
+			f = imag(c)
+			i = math.Float32bits(f)
+			binary.LittleEndian.PutUint32(b, i)
+			buf.Write(b)
+
+		case reflect.Complex128:
+			c := args[idx].(complex128)
+
+			f := real(c)
+			i := math.Float64bits(f)
+			binary.LittleEndian.PutUint64(b, i)
+			buf.Write(b)
+
+			f = imag(c)
+			i = math.Float64bits(f)
+			binary.LittleEndian.PutUint64(b, i)
+			buf.Write(b)
+
+		default:
+			panic(fmt.Sprintf("Invalid Kind in logger: %v", l.kinds[idx]))
+		}
 	}
 
-	return nil
+	_, err := w.Write(buf.Bytes())
+	return err
 }
