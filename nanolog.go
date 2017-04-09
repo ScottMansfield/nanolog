@@ -19,6 +19,8 @@ import "io"
 import "bufio"
 import "os"
 import "reflect"
+import "unicode/utf8"
+import "fmt"
 
 // MaxLoggers is the maximum number of different loggers that are allowed
 const MaxLoggers = 10240
@@ -35,7 +37,7 @@ const MaxLoggers = 10240
 // parser may complain saying that it encountered an invalid code. To fix this,
 // use curly braces after the percent sign to surround the code: "%{i}1 ".
 
-// Kinds from the reflect package and their corresponding format codes
+// Kinds and their corresponding format codes
 //
 // Kind         Code
 // ------------------------
@@ -45,11 +47,11 @@ const MaxLoggers = 10240
 // Int16        i16
 // Int32        i32
 // Int64        i64
-// Uint         ui
-// Uint8        ui8
-// Uint16       ui16
-// Uint32       ui32
-// Uint64       ui64
+// Uint         u
+// Uint8        u8
+// Uint16       u16
+// Uint32       u32
+// Uint64       u64
 // Uintptr
 // Float32      f32
 // Float64      f64
@@ -62,7 +64,7 @@ const MaxLoggers = 10240
 // Map
 // Ptr
 // Slice
-// String
+// String       s
 // Struct
 // UnsafePointer
 
@@ -95,11 +97,187 @@ func AddLogger(fmt string) LogHandle {
 	// save some kind of string format to the file
 	idx := atomic.AddUint32(curLoggersIdx, 1) - 1
 
-	loggers[idx] = logger{}
-
-	// parse string and build kinds slice
+	loggers[idx] = parseLogLine(&fmt)
 
 	return LogHandle(idx)
+}
+
+func parseLogLine(gold *string) logger {
+	// make a copy we can destroy
+	f := gold
+	var kinds []reflect.Kind
+
+	for len(*f) > 0 {
+		if next(f) != '%' {
+			continue
+		}
+
+		// Literal % sign
+		if next(f) == '%' {
+			continue
+		}
+
+		var requireBrace bool
+
+		// Optional curly braces around format
+		r := next(f)
+		if r == '{' {
+			requireBrace = true
+			r = next(f)
+		}
+
+		// optimized parse tree
+		switch r {
+		case 'b':
+			kinds = append(kinds, reflect.Bool)
+
+		case 's':
+			kinds = append(kinds, reflect.String)
+
+		case 'i':
+			r := peek(f)
+			switch r {
+			case '8':
+				kinds = append(kinds, reflect.Int8)
+
+			case '1':
+				next(f)
+				if next(f) != '6' {
+					logpanic("Was expecting i16.", gold)
+				}
+				kinds = append(kinds, reflect.Int16)
+
+			case '3':
+				next(f)
+				if next(f) != '2' {
+					logpanic("Was expecting i32.", gold)
+				}
+				kinds = append(kinds, reflect.Int32)
+
+			case '6':
+				next(f)
+				if next(f) != '4' {
+					logpanic("Was expecting i64.", gold)
+				}
+				kinds = append(kinds, reflect.Int64)
+
+			default:
+				kinds = append(kinds, reflect.Int)
+			}
+
+		case 'u':
+			r := peek(f)
+			switch r {
+			case '8':
+				kinds = append(kinds, reflect.Uint8)
+
+			case '1':
+				next(f)
+				if next(f) != '6' {
+					logpanic("Was expecting u16.", gold)
+				}
+				kinds = append(kinds, reflect.Uint16)
+
+			case '3':
+				next(f)
+				if next(f) != '2' {
+					logpanic("Was expecting u32.", gold)
+				}
+				kinds = append(kinds, reflect.Uint32)
+
+			case '6':
+				next(f)
+				if next(f) != '4' {
+					logpanic("Was expecting u64.", gold)
+				}
+				kinds = append(kinds, reflect.Uint64)
+
+			default:
+				kinds = append(kinds, reflect.Uint)
+			}
+
+		case 'f':
+			r := peek(f)
+			switch r {
+			case '3':
+				next(f)
+				if next(f) != '2' {
+					logpanic("Was expecting f32.", gold)
+				}
+				kinds = append(kinds, reflect.Float32)
+
+			case '6':
+				next(f)
+				if next(f) != '4' {
+					logpanic("Was expecting f64.", gold)
+				}
+				kinds = append(kinds, reflect.Float64)
+
+			default:
+				logpanic("Expecting either f32 or f64", gold)
+			}
+
+		case 'c':
+			r := peek(f)
+			switch r {
+			case '6':
+				next(f)
+				if next(f) != '4' {
+					logpanic("Was expecting c64.", gold)
+				}
+				kinds = append(kinds, reflect.Complex64)
+
+			case '1':
+				next(f)
+				if next(f) != '2' {
+					logpanic("Was expecting c128.", gold)
+				}
+				if next(f) != '8' {
+					logpanic("Was expecting c128.", gold)
+				}
+				kinds = append(kinds, reflect.Complex128)
+
+			default:
+				logpanic("Expecting either c64 or c128", gold)
+			}
+		}
+
+		if requireBrace {
+			if next(f) != '}' {
+				logpanic("Missing '}' character", gold)
+			}
+		}
+	}
+
+	return logger{
+		kinds: kinds,
+	}
+}
+
+func peek(s *string) rune {
+	r, _ := utf8.DecodeRuneInString(*s)
+
+	if r == utf8.RuneError {
+		panic("Malformed log string")
+	}
+
+	return r
+}
+
+func next(s *string) rune {
+	r, n := utf8.DecodeRuneInString(*s)
+	*s = (*s)[n:]
+
+	if r == utf8.RuneError {
+		panic("Malformed log string")
+	}
+
+	return r
+}
+
+// helper function to have consistently formatted panics and shorter code above
+func logpanic(msg string, gold *string) {
+	panic(fmt.Sprintf("Malformed log format string. %s.\n%s", msg, *gold))
 }
 
 // Log logs to the output stream for the logging package
@@ -107,14 +285,16 @@ func Log(handle LogHandle, args ...interface{}) error {
 	l := loggers[handle]
 
 	if len(l.kinds) != len(args) {
-		panic("UH OH")
+		panic("Args do not match log line")
 	}
 
 	for idx := range l.kinds {
 		if l.kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
-			panic("NO MATCH")
+			panic("Argument type does not match log line")
 		}
 
 		// write serialized version to writer
 	}
+
+	return nil
 }
