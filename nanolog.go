@@ -81,17 +81,9 @@ const MaxLoggers = 10240
 //
 // The differentiation is done with the entryType, which is prefixed on to the record.
 
-type entryType byte
-
-const (
-	etInvalid entryType = iota
-	etLogLine
-	etLogEntry
-)
-
 // The log line records are formatted as follows:
 //
-// type:             1 byte - etLogLine (1)
+// type:             1 byte - ETLogLine (1)
 // id:               4 bytes - little endian uint32
 // # of string segs: 4 bytes - little endian uint32
 // kinds:            (#segs - 1) bytes, each being a reflect.Kind
@@ -101,7 +93,7 @@ const (
 
 // The log entry records are formatted as follows:
 //
-// type:    1 byte - etLogEntry (2)
+// type:    1 byte - ETLogEntry (2)
 // line id: 4 bytes - little endian uint32
 // data+:   var bytes - all the corresponding data for the kinds in the log line entry
 
@@ -147,15 +139,23 @@ const (
 // actually log data.
 type Handle uint32
 
-var (
-	loggers       = make([]logger, MaxLoggers)
-	curLoggersIdx = new(uint32)
+type EntryType byte
+
+const (
+	ETInvalid EntryType = iota
+	ETLogLine
+	ETLogEntry
 )
 
-type logger struct {
-	// track varargs lengths and types that are needed
-	kinds []reflect.Kind
+type Logger struct {
+	Kinds []reflect.Kind
+	Segs  []string
 }
+
+var (
+	loggers       = make([]Logger, MaxLoggers)
+	curLoggersIdx = new(uint32)
+)
 
 var w *bufio.Writer = bufio.NewWriter(os.Stdout)
 
@@ -178,12 +178,12 @@ func AddLogger(fmt string) Handle {
 	l, segs := parseLogLine(fmt)
 	loggers[idx] = l
 
-	writeLogDataToFile(idx, l.kinds, segs)
+	writeLogDataToFile(idx, l.Kinds, segs)
 
 	return Handle(idx)
 }
 
-func parseLogLine(gold string) (logger, []string) {
+func parseLogLine(gold string) (Logger, []string) {
 	// make a copy we can destroy
 	tmp := gold
 	f := &tmp
@@ -344,8 +344,8 @@ func parseLogLine(gold string) (logger, []string) {
 
 	segs = append(segs, string(curseg))
 
-	return logger{
-		kinds: kinds,
+	return Logger{
+		Kinds: kinds,
 	}, segs
 }
 
@@ -375,7 +375,7 @@ func writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
 	b := make([]byte, 4)
 
 	// write log line record identifier
-	buf.WriteByte(byte(etLogLine))
+	buf.WriteByte(byte(ETLogLine))
 
 	// write log identifier
 	binary.LittleEndian.PutUint32(b, idx)
@@ -427,7 +427,7 @@ var (
 func Log(handle Handle, args ...interface{}) error {
 	l := loggers[handle]
 
-	if len(l.kinds) != len(args) {
+	if len(l.Kinds) != len(args) {
 		panic("Number of args does not match log line")
 	}
 
@@ -435,18 +435,18 @@ func Log(handle Handle, args ...interface{}) error {
 	buf.Reset()
 	b := make([]byte, 8)
 
-	buf.WriteByte(byte(etLogEntry))
+	buf.WriteByte(byte(ETLogEntry))
 
 	binary.LittleEndian.PutUint32(b, uint32(handle))
 	buf.Write(b[:4])
 
-	for idx := range l.kinds {
-		if l.kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
+	for idx := range l.Kinds {
+		if l.Kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
 			panic("Argument type does not match log line")
 		}
 
 		// write serialized version to writer
-		switch l.kinds[idx] {
+		switch l.Kinds[idx] {
 		case reflect.Bool:
 			if args[idx].(bool) {
 				buf.WriteByte(1)
@@ -553,7 +553,7 @@ func Log(handle Handle, args ...interface{}) error {
 			buf.Write(b)
 
 		default:
-			panic(fmt.Sprintf("Invalid Kind in logger: %v", l.kinds[idx]))
+			panic(fmt.Sprintf("Invalid Kind in logger: %v", l.Kinds[idx]))
 		}
 	}
 

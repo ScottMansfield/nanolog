@@ -39,8 +39,8 @@ func TestAddLogger(t *testing.T) {
 			t.Fatalf("Expected serialized length of 13 but got %v.\nOutput: % X", len(out), out)
 		}
 
-		if out[0] != byte(etLogLine) {
-			t.Fatalf("Expected first byte to be etLogLine but got %v", out[0])
+		if out[0] != byte(ETLogLine) {
+			t.Fatalf("Expected first byte to be ETLogLine but got %v", out[0])
 		}
 
 		out = out[1:]
@@ -84,8 +84,8 @@ func TestAddLogger(t *testing.T) {
 			t.Fatalf("Expected serialized length of 18 but got %v.\nOutput: % X", len(out), out)
 		}
 
-		if out[0] != byte(etLogLine) {
-			t.Fatalf("Expected first byte to be etLogLine but got %v", out[0])
+		if out[0] != byte(ETLogLine) {
+			t.Fatalf("Expected first byte to be ETLogLine but got %v", out[0])
 		}
 
 		out = out[1:]
@@ -139,8 +139,8 @@ func TestParseLogLine(t *testing.T) {
 	l, segs := parseLogLine(f)
 
 	// verify logger kinds
-	if len(l.kinds) != 4 {
-		t.Fatalf("Expected 4 kinds in logger but got %v", len(l.kinds))
+	if len(l.Kinds) != 4 {
+		t.Fatalf("Expected 4 kinds in logger but got %v", len(l.Kinds))
 	}
 
 	// verify logger segs
@@ -168,8 +168,8 @@ func TestLog(t *testing.T) {
 				t.Fatalf("Expected serialized length of 6 but got %v.\nOutput: % X", len(out), out)
 			}
 
-			if out[0] != byte(etLogEntry) {
-				t.Fatalf("Expected first byte to be etLogEntry but got %v", out[0])
+			if out[0] != byte(ETLogEntry) {
+				t.Fatalf("Expected first byte to be ETLogEntry but got %v", out[0])
 			}
 
 			out = out[1:]
@@ -204,8 +204,8 @@ func TestLog(t *testing.T) {
 				t.Fatalf("Expected serialized length of 6 but got %v.\nOutput: % X", len(out), out)
 			}
 
-			if out[0] != byte(etLogEntry) {
-				t.Fatalf("Expected first byte to be etLogEntry but got %v", out[0])
+			if out[0] != byte(ETLogEntry) {
+				t.Fatalf("Expected first byte to be ETLogEntry but got %v", out[0])
 			}
 
 			out = out[1:]
@@ -238,7 +238,7 @@ func BenchmarkAddLogger(b *testing.B) {
 }
 
 var (
-	testLoggerSink   logger
+	testLoggerSink   Logger
 	testSegmentsSink []string
 )
 
