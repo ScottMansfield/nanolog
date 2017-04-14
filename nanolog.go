@@ -157,7 +157,7 @@ var (
 	curLoggersIdx = new(uint32)
 )
 
-var w *bufio.Writer = bufio.NewWriter(os.Stdout)
+var w *bufio.Writer = bufio.NewWriter(os.Stderr)
 
 // SetWriter will set up efficient writing for the log to the output stream given.
 // A raw IO stream is best.
