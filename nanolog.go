@@ -157,13 +157,28 @@ var (
 	curLoggersIdx = new(uint32)
 )
 
-var w *bufio.Writer = bufio.NewWriter(os.Stderr)
+var (
+	underlying io.Closer     = os.Stderr
+	w          *bufio.Writer = bufio.NewWriter(os.Stderr)
+)
 
 // SetWriter will set up efficient writing for the log to the output stream given.
 // A raw IO stream is best.
 func SetWriter(new io.Writer) {
 	w.Flush()
 	w = bufio.NewWriter(new)
+}
+
+func Close() error {
+	err := w.Flush()
+	if err != nil {
+		return err
+	}
+
+	err = underlying.Close()
+	w = nil
+
+	return err
 }
 
 // AddLogger initializes a logger and returns a handle for future logging
@@ -228,6 +243,7 @@ func parseLogLine(gold string) (Logger, []string) {
 			r := peek(f)
 			switch r {
 			case '8':
+				next(f)
 				kinds = append(kinds, reflect.Int8)
 
 			case '1':
@@ -259,6 +275,7 @@ func parseLogLine(gold string) (Logger, []string) {
 			r := peek(f)
 			switch r {
 			case '8':
+				next(f)
 				kinds = append(kinds, reflect.Uint8)
 
 			case '1':

@@ -258,17 +258,23 @@ func main() {
 				default:
 					panic(fmt.Sprintf("Invalid Kind in logger: %v", logger.Kinds[i-1]))
 				}
+
+				if toWrite != nil {
+					_, err = fmt.Fprint(out, toWrite)
+					if err != nil {
+						panic(err)
+					}
+				}
+
+				out.WriteString(logger.Segs[i])
 			}
 
-			if toWrite != nil {
-				_, err = fmt.Fprint(out, toWrite)
-				if err != nil {
-					panic(err)
-				}
-			}
+			out.WriteByte('\n')
 
 		default:
 			panic("BAD FILE FORMAT")
 		}
 	}
+
+	out.Flush()
 }
