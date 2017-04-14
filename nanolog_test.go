@@ -56,8 +56,15 @@ func TestLog(t *testing.T) {
 	Log(h, int64(1), "string", uint32(2), uint32(3))
 }
 
+var testLogHandleSink Handle
+
 func BenchmarkAddLogger(b *testing.B) {
-	//
+	for i := 0; i < b.N; i++ {
+		testLogHandleSink = AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+
+		// to prevent it from overflowing the logger array
+		*curLoggersIdx = 0
+	}
 }
 
 var (
@@ -73,9 +80,21 @@ func BenchmarkParseLogLine(b *testing.B) {
 	}
 }
 
-func BenchmarkLog(b *testing.B) {
+func BenchmarkLogParallel(b *testing.B) {
 	w = bufio.NewWriter(ioutil.Discard)
 	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Log(h, int64(1), "string", uint32(2), uint32(3))
+		}
+	})
+}
+
+func BenchmarkLogSequential(b *testing.B) {
+	w = bufio.NewWriter(ioutil.Discard)
+	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+
 	for i := 0; i < b.N; i++ {
 		Log(h, int64(1), "string", uint32(2), uint32(3))
 	}

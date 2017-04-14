@@ -14,16 +14,19 @@
 
 package nanolog
 
-import "sync/atomic"
-import "io"
-import "bufio"
-import "os"
-import "reflect"
-import "unicode/utf8"
-import "fmt"
-import "bytes"
-import "encoding/binary"
-import "math"
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"math"
+	"os"
+	"reflect"
+	"sync"
+	"sync/atomic"
+	"unicode/utf8"
+)
 
 // MaxLoggers is the maximum number of different loggers that are allowed
 const MaxLoggers = 10240
@@ -71,10 +74,10 @@ const MaxLoggers = 10240
 // Struct
 // UnsafePointer
 
-// LogHandle is a simple handle to an internal logging data structure
+// Handle is a simple handle to an internal logging data structure
 // LogHandles are returned by the AddLogger method and used by the Log method to
 // actually log data.
-type LogHandle uint32
+type Handle uint32
 
 var (
 	loggers       = make([]logger, MaxLoggers)
@@ -86,7 +89,7 @@ type logger struct {
 	kinds []reflect.Kind
 }
 
-var w *bufio.Writer = bufio.NewWriter(os.Stderr)
+var w *bufio.Writer = bufio.NewWriter(os.Stdout)
 
 // SetWriter will set up efficient writing for the log to the output stream given.
 // A raw IO stream is best.
@@ -96,7 +99,7 @@ func SetWriter(new io.Writer) {
 }
 
 // AddLogger initializes a logger and returns a handle for future logging
-func AddLogger(fmt string) LogHandle {
+func AddLogger(fmt string) Handle {
 	// save some kind of string format to the file
 	idx := atomic.AddUint32(curLoggersIdx, 1) - 1
 
@@ -109,7 +112,7 @@ func AddLogger(fmt string) LogHandle {
 
 	writeLogDataToFile(idx, l.kinds, segs)
 
-	return LogHandle(idx)
+	return Handle(idx)
 }
 
 func parseLogLine(gold string) (logger, []string) {
@@ -331,15 +334,26 @@ func logpanic(msg, gold string) {
 	panic(fmt.Sprintf("Malformed log format string. %s.\n%s", msg, gold))
 }
 
+var (
+	bufpool = &sync.Pool{
+		New: func() interface{} {
+			return &bytes.Buffer{}
+		},
+	}
+
+	writeLock = new(sync.Mutex)
+)
+
 // Log logs to the output stream for the logging package
-func Log(handle LogHandle, args ...interface{}) error {
+func Log(handle Handle, args ...interface{}) error {
 	l := loggers[handle]
 
 	if len(l.kinds) != len(args) {
 		panic("Number of args does not match log line")
 	}
 
-	buf := &bytes.Buffer{}
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
 	b := make([]byte, 8)
 
 	binary.LittleEndian.PutUint32(b, uint32(handle))
@@ -462,6 +476,10 @@ func Log(handle LogHandle, args ...interface{}) error {
 		}
 	}
 
+	writeLock.Lock()
 	_, err := w.Write(buf.Bytes())
+	writeLock.Unlock()
+
+	bufpool.Put(buf)
 	return err
 }
