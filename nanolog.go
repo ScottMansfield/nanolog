@@ -32,8 +32,8 @@ import (
 const MaxLoggers = 10240
 
 // The format string is a straightforward format inspired by the full fledged
-// fmt.Fprintf function. The codes are unique to thsi package, so normal fmt
-// documentation will not be applicable.
+// fmt.Fprintf function. The codes are unique to this package, so normal fmt
+// documentation is not be applicable.
 
 // THe format string is similar to fmt in that it uses the percent sign (a.k.a.
 // the modulo operator) to signify the start of a format code. The reader is
@@ -73,6 +73,74 @@ const MaxLoggers = 10240
 // String       s
 // Struct
 // UnsafePointer
+
+// The file format has two categories of data:
+//
+// 1. Log line information to reconstruct logs later
+// 2. Actual log entries
+//
+// The differentiation is done with the entryType, which is prefixed on to the record.
+
+type entryType byte
+
+const (
+	etInvalid entryType = iota
+	etLogLine
+	etLogEntry
+)
+
+// The log line records are formatted as follows:
+//
+// type:             1 byte - etLogLine (1)
+// id:               4 bytes - little endian uint32
+// # of string segs: 4 bytes - little endian uint32
+// kinds:            (#segs - 1) bytes, each being a reflect.Kind
+// segments:
+//   string length:  4 bytes - little endian uint32
+//   string data:    ^length bytes
+
+// The log entry records are formatted as follows:
+//
+// type:    1 byte - etLogEntry (2)
+// line id: 4 bytes - little endian uint32
+// data+:   var bytes - all the corresponding data for the kinds in the log line entry
+
+// The data is serialized as follows:
+//
+// Bool: 1 byte
+//   False: 0 or True: 1
+//
+// String: 4 + len(string) bytes
+//   Length: 4 bytes - little endian uint32
+//   String bytes: Length bytes
+//
+// int family:
+//   int:    8 bytes - int64 as little endian uint64
+//   int8:  1 byte
+//   int16: 2 bytes - int16 as little endian uint16
+//   int32: 4 bytes - int32 as little endian uint32
+//   int64: 8 bytes - int64 as little endian uint64
+//
+// uint family:
+//   uint:   8 bytes - little endian uint64
+//   uint8:  1 byte
+//   uint16: 2 bytes - little endian uint16
+//   uint32: 4 bytes - little endian uint32
+//   uint64: 8 bytes - little endian uint64
+//
+// float32:
+//   4 bytes as little endian uint32 from float32 bits
+//
+// float64:
+//   8 bytes as little endian uint64 from float64 bits
+//
+// complex64:
+//   Real:    4 bytes as little endian uint32 from float32 bits
+//   Complex: 4 bytes as little endian uint32 from float32 bits
+//
+// complex128:
+//   Real:    8 bytes as little endian uint64 from float64 bits
+//   Complex: 8 bytes as little endian uint64 from float64 bits
 
 // Handle is a simple handle to an internal logging data structure
 // LogHandles are returned by the AddLogger method and used by the Log method to
@@ -274,6 +342,8 @@ func parseLogLine(gold string) (logger, []string) {
 		}
 	}
 
+	segs = append(segs, string(curseg))
+
 	return logger{
 		kinds: kinds,
 	}, segs
@@ -304,11 +374,20 @@ func writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
 	buf := &bytes.Buffer{}
 	b := make([]byte, 4)
 
+	// write log line record identifier
+	buf.WriteByte(byte(etLogLine))
+
 	// write log identifier
 	binary.LittleEndian.PutUint32(b, idx)
 	buf.Write(b)
 
-	// write number of segments
+	// write number of string segments between variable parts
+	// we don't need to write the number of kinds here because it is always
+	// equal to the number of segments minus 1
+	if len(segs) > math.MaxUint32 {
+		// what the hell are you logging?!
+		panic("Too many log line segments")
+	}
 	binary.LittleEndian.PutUint32(b, uint32(len(segs)))
 	buf.Write(b)
 
@@ -355,6 +434,8 @@ func Log(handle Handle, args ...interface{}) error {
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	b := make([]byte, 8)
+
+	buf.WriteByte(byte(etLogEntry))
 
 	binary.LittleEndian.PutUint32(b, uint32(handle))
 	buf.Write(b[:4])
