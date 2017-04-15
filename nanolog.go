@@ -240,6 +240,11 @@ func parseLogLine(gold string) (Logger, []string) {
 			kinds = append(kinds, reflect.String)
 
 		case 'i':
+			if len(*f) == 0 {
+				kinds = append(kinds, reflect.Int)
+				break
+			}
+
 			r := peek(f)
 			switch r {
 			case '8':
@@ -272,6 +277,11 @@ func parseLogLine(gold string) (Logger, []string) {
 			}
 
 		case 'u':
+			if len(*f) == 0 {
+				kinds = append(kinds, reflect.Uint)
+				break
+			}
+
 			r := peek(f)
 			switch r {
 			case '8':
