@@ -544,7 +544,7 @@ func Log(handle Handle, args ...interface{}) error {
 			f := args[idx].(float32)
 			i := math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b)
+			buf.Write(b[:4])
 
 		case reflect.Float64:
 			f := args[idx].(float64)
@@ -559,12 +559,12 @@ func Log(handle Handle, args ...interface{}) error {
 			f := real(c)
 			i := math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b)
+			buf.Write(b[:4])
 
 			f = imag(c)
 			i = math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b)
+			buf.Write(b[:4])
 
 		case reflect.Complex128:
 			c := args[idx].(complex128)

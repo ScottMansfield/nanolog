@@ -19,9 +19,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"reflect"
 	"testing"
+	"testing/quick"
 )
 
 var testLetters = []rune("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -201,77 +203,439 @@ func TestParseLogLine(t *testing.T) {
 }
 
 func TestLog(t *testing.T) {
+	check := func(t *testing.T, fmtstring string, toWrite interface{}, dataLen int, checkRest func(*testing.T, []byte) bool) bool {
+		buf := &bytes.Buffer{}
+		w = bufio.NewWriter(buf)
+		h := AddLogger(fmtstring)
+		//t.Log("Handle:", h)
+		w.Flush()
+		buf.Reset()
+
+		Log(h, toWrite)
+
+		w.Flush()
+		out := buf.Bytes()
+
+		expectedLen := 1 + 4 + dataLen
+
+		if len(out) != expectedLen {
+			t.Errorf("Expected serialized length of %v but got %v.\nOutput: % X", expectedLen, len(out), out)
+			return false
+		}
+
+		if out[0] != byte(ETLogEntry) {
+			t.Errorf("Expected first byte to be ETLogEntry but got %v", out[0])
+			return false
+		}
+
+		out = out[1:]
+
+		idbuf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(idbuf, uint32(h))
+
+		if !bytes.HasPrefix(out, idbuf) {
+			t.Errorf("Expected prefix to match the handle ID.\nExpected: % X\nGot: % X", idbuf, out[:4])
+			return false
+		}
+
+		out = out[4:]
+
+		return checkRest(t, out)
+	}
+
 	t.Run("bool", func(t *testing.T) {
-		t.Run("false", func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			w = bufio.NewWriter(buf)
-			h := AddLogger("%b")
-			t.Log("Handle:", h)
-			w.Flush()
-			buf.Reset()
+		f := func(b bool) bool {
+			return check(t, "%b", b, 1, func(t *testing.T, out []byte) bool {
+				var expected byte
+				if b {
+					expected = 1
+				}
 
-			Log(h, false)
+				if out[0] != expected {
+					t.Errorf("Expected %v boolean value to be %v but got %v", b, expected, out[0])
+					return false
+				}
 
-			w.Flush()
-			out := buf.Bytes()
+				return true
+			})
+		}
 
-			if len(out) != 6 {
-				t.Fatalf("Expected serialized length of 6 but got %v.\nOutput: % X", len(out), out)
+		if err := quick.Check(f, nil); err != nil {
+			t.Fatalf("Got error during quick test: %v", err)
+		}
+	})
+
+	t.Run("string", func(t *testing.T) {
+		f := func(s string) bool {
+			return check(t, "%s", s, 4+len(s), func(t *testing.T, out []byte) bool {
+				lenbuf := make([]byte, 4)
+				binary.LittleEndian.PutUint32(lenbuf, uint32(len(s)))
+
+				if !bytes.HasPrefix(out, lenbuf) {
+					t.Errorf("Expected prefix to match the length of the input string.\nExpected: % X\nGot: % X", lenbuf, out[:4])
+					return false
+				}
+
+				out = out[4:]
+
+				if string(out) != s {
+					t.Errorf("Expected input %v to return but got %v", s, string(out))
+					return false
+				}
+
+				return true
+			})
+		}
+
+		if err := quick.Check(f, nil); err != nil {
+			t.Fatalf("Got error during quick test: %v", err)
+		}
+	})
+
+	t.Run("Ints", func(t *testing.T) {
+		t.Run("int", func(t *testing.T) {
+			f := func(i int) bool {
+				return check(t, "%i", i, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := int(binary.LittleEndian.Uint64(out))
+
+					if v != i {
+						t.Errorf("Expected input %v to return but got %v", i, out)
+						return false
+					}
+
+					return true
+				})
 			}
 
-			if out[0] != byte(ETLogEntry) {
-				t.Fatalf("Expected first byte to be ETLogEntry but got %v", out[0])
-			}
-
-			out = out[1:]
-
-			idbuf := make([]byte, 4)
-			binary.LittleEndian.PutUint32(idbuf, uint32(h))
-
-			if !bytes.HasPrefix(out, idbuf) {
-				t.Fatalf("Expected prefix to match the handle ID.\nExpected: % X\nGot: % X", idbuf, out[:4])
-			}
-
-			out = out[4:]
-
-			if out[0] != 0 {
-				t.Fatalf("Expected false boolean value to be 0 but got %v", out[4])
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
 			}
 		})
-		t.Run("true", func(t *testing.T) {
-			buf := &bytes.Buffer{}
-			w = bufio.NewWriter(buf)
-			h := AddLogger("%b")
-			t.Log("Handle:", h)
-			w.Flush()
-			buf.Reset()
 
-			Log(h, true)
+		t.Run("int8", func(t *testing.T) {
+			f := func(i int8) bool {
+				return check(t, "%i8", i, 1, func(t *testing.T, out []byte) bool {
+					if len(out) != 1 {
+						t.Errorf("Expected remaining length to be 1 but got %v", len(out))
+					}
 
-			w.Flush()
-			out := buf.Bytes()
+					v := int8(out[0])
 
-			if len(out) != 6 {
-				t.Fatalf("Expected serialized length of 6 but got %v.\nOutput: % X", len(out), out)
+					if v != i {
+						t.Errorf("Expected input %v to return but got %v", i, out)
+						return false
+					}
+
+					return true
+				})
 			}
 
-			if out[0] != byte(ETLogEntry) {
-				t.Fatalf("Expected first byte to be ETLogEntry but got %v", out[0])
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("int16", func(t *testing.T) {
+			f := func(i int16) bool {
+				return check(t, "%i16", i, 2, func(t *testing.T, out []byte) bool {
+					if len(out) != 2 {
+						t.Errorf("Expected remaining length to be 2 but got %v", len(out))
+					}
+
+					v := int16(binary.LittleEndian.Uint16(out))
+
+					if v != i {
+						t.Errorf("Expected input %v to return but got %v", i, out)
+						return false
+					}
+
+					return true
+				})
 			}
 
-			out = out[1:]
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
 
-			idbuf := make([]byte, 4)
-			binary.LittleEndian.PutUint32(idbuf, uint32(h))
+		t.Run("int32", func(t *testing.T) {
+			f := func(i int32) bool {
+				return check(t, "%i32", i, 4, func(t *testing.T, out []byte) bool {
+					if len(out) != 4 {
+						t.Errorf("Expected remaining length to be 4 but got %v", len(out))
+					}
 
-			if !bytes.HasPrefix(out, idbuf) {
-				t.Fatalf("Expected prefix to match the handle ID.\nExpected: % X\nGot: % X", idbuf, out[:4])
+					v := int32(binary.LittleEndian.Uint32(out))
+
+					if v != i {
+						t.Errorf("Expected input %v to return but got %v", i, out)
+						return false
+					}
+
+					return true
+				})
 			}
 
-			out = out[4:]
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
 
-			if out[0] != 1 {
-				t.Fatalf("Expected true boolean value to be 1 but got %v", out[0])
+		t.Run("int64", func(t *testing.T) {
+			f := func(i int64) bool {
+				return check(t, "%i64", i, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := int64(binary.LittleEndian.Uint64(out))
+
+					if v != i {
+						t.Errorf("Expected input %v to return but got %v", i, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+	})
+
+	t.Run("Uints", func(t *testing.T) {
+		t.Run("uint", func(t *testing.T) {
+			f := func(u uint) bool {
+				return check(t, "%u", u, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := uint(binary.LittleEndian.Uint64(out))
+
+					if v != u {
+						t.Errorf("Expected input %v to return but got %v", u, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("uint8", func(t *testing.T) {
+			f := func(u uint8) bool {
+				return check(t, "%u8", u, 1, func(t *testing.T, out []byte) bool {
+					if len(out) != 1 {
+						t.Errorf("Expected remaining length to be 1 but got %v", len(out))
+					}
+
+					v := uint8(out[0])
+
+					if v != u {
+						t.Errorf("Expected input %v to return but got %v", u, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("uint16", func(t *testing.T) {
+			f := func(u uint16) bool {
+				return check(t, "%u16", u, 2, func(t *testing.T, out []byte) bool {
+					if len(out) != 2 {
+						t.Errorf("Expected remaining length to be 2 but got %v", len(out))
+					}
+
+					v := binary.LittleEndian.Uint16(out)
+
+					if v != u {
+						t.Errorf("Expected input %v to return but got %v", u, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("uint32", func(t *testing.T) {
+			f := func(u uint32) bool {
+				return check(t, "%u32", u, 4, func(t *testing.T, out []byte) bool {
+					if len(out) != 4 {
+						t.Errorf("Expected remaining length to be 4 but got %v", len(out))
+					}
+
+					v := binary.LittleEndian.Uint32(out)
+
+					if v != u {
+						t.Errorf("Expected input %v to return but got %v", u, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("uint64", func(t *testing.T) {
+			f := func(u uint64) bool {
+				return check(t, "%u64", u, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := binary.LittleEndian.Uint64(out)
+
+					if v != u {
+						t.Errorf("Expected input %v to return but got %v", u, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+	})
+
+	t.Run("Floats", func(t *testing.T) {
+		t.Run("float32", func(t *testing.T) {
+			f := func(f float32) bool {
+				return check(t, "%f32", f, 4, func(t *testing.T, out []byte) bool {
+					if len(out) != 4 {
+						t.Errorf("Expected remaining length to be 4 but got %v", len(out))
+					}
+
+					v := math.Float32frombits(binary.LittleEndian.Uint32(out))
+
+					if v != f {
+						t.Errorf("Expected input %v to return but got %v", f, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("float64", func(t *testing.T) {
+			f := func(f float64) bool {
+				return check(t, "%f64", f, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := math.Float64frombits(binary.LittleEndian.Uint64(out))
+
+					if v != f {
+						t.Errorf("Expected input %v to return but got %v", f, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+	})
+
+	t.Run("Complexes", func(t *testing.T) {
+		t.Run("complex64", func(t *testing.T) {
+			f := func(c complex64) bool {
+				return check(t, "%c64", c, 8, func(t *testing.T, out []byte) bool {
+					if len(out) != 8 {
+						t.Errorf("Expected remaining length to be 8 but got %v", len(out))
+					}
+
+					v := math.Float32frombits(binary.LittleEndian.Uint32(out))
+
+					if v != real(c) {
+						t.Errorf("Expected input %v to return but got %v", c, out)
+						return false
+					}
+
+					out = out[4:]
+
+					v = math.Float32frombits(binary.LittleEndian.Uint32(out))
+
+					if v != imag(c) {
+						t.Errorf("Expected input %v to return but got %v", c, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
+			}
+		})
+
+		t.Run("complex128", func(t *testing.T) {
+			f := func(c complex128) bool {
+				return check(t, "%c128", c, 16, func(t *testing.T, out []byte) bool {
+					if len(out) != 16 {
+						t.Errorf("Expected remaining length to be 16 but got %v", len(out))
+					}
+
+					v := math.Float64frombits(binary.LittleEndian.Uint64(out))
+
+					if v != real(c) {
+						t.Errorf("Expected input %v to return but got %v", c, out)
+						return false
+					}
+
+					out = out[8:]
+
+					v = math.Float64frombits(binary.LittleEndian.Uint64(out))
+
+					if v != imag(c) {
+						t.Errorf("Expected input %v to return but got %v", c, out)
+						return false
+					}
+
+					return true
+				})
+			}
+
+			if err := quick.Check(f, nil); err != nil {
+				t.Fatalf("Got error during quick test: %v", err)
 			}
 		})
 	})
