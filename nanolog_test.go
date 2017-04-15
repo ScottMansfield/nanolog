@@ -40,9 +40,42 @@ func randString() string {
 	return string(ret)
 }
 
+func TestSetWriter(t *testing.T) {
+	buf := &bytes.Buffer{}
+	SetWriter(buf)
+
+	// simulate some logging
+	w.WriteByte(35)
+
+	SetWriter(&bytes.Buffer{})
+
+	if buf.Bytes()[0] != 35 {
+		t.Fatalf("Expected data to be written to the underlying")
+	}
+}
+
+func TestFlush(t *testing.T) {
+	// test that the old one is flushed
+	// test new one can be written to
+	// probably set twice and check the middle contents
+	buf := &bytes.Buffer{}
+	SetWriter(buf)
+
+	// simulate some logging
+	w.WriteByte(35)
+
+	Flush()
+
+	if buf.Bytes()[0] != 35 {
+		t.Fatalf("Expected data to be written to the underlying")
+	}
+}
+
 func TestAddLogger(t *testing.T) {
 	genTest := func(logLine string, expectedKinds []reflect.Kind, expectedSegs []string) func(*testing.T) {
 		return func(t *testing.T) {
+			// Reset to avoid running over the loggers limit
+			*curLoggersIdx = 0
 			buf := &bytes.Buffer{}
 			w = bufio.NewWriter(buf)
 			h := AddLogger(logLine)
@@ -185,25 +218,92 @@ func TestAddLogger(t *testing.T) {
 	}
 }
 
+func TestAddLoggerLimit(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Logf("Correctly got a panic: %v", r)
+		} else {
+			t.Fatalf("Expected a panic but did not get one")
+		}
+
+		// reset so other tests can actually continue testing
+		*curLoggersIdx = 0
+	}()
+
+	t.Logf("Filling up loggers")
+	for i := 0; i < MaxLoggers+1; i++ {
+		AddLogger("")
+	}
+}
+
 func TestParseLogLine(t *testing.T) {
-	buf := &bytes.Buffer{}
-	w = bufio.NewWriter(buf)
-	f := "foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32."
-	l, segs := parseLogLine(f)
+	t.Run("Correct", func(t *testing.T) {
+		buf := &bytes.Buffer{}
+		w = bufio.NewWriter(buf)
+		f := "foo thing bar thing %i64. Fubar %s foo. sadf %% asdf %u32 sdfasfasdfasdffds %u32."
+		l, segs := parseLogLine(f)
 
-	// verify logger kinds
-	if len(l.Kinds) != 4 {
-		t.Fatalf("Expected 4 kinds in logger but got %v", len(l.Kinds))
-	}
+		// verify logger kinds
+		if len(l.Kinds) != 4 {
+			t.Fatalf("Expected 4 kinds in logger but got %v", len(l.Kinds))
+		}
 
-	// verify logger segs
-	if len(segs) != 5 {
-		t.Fatalf("Expected 5 segs but got %v", len(segs))
-	}
+		// verify logger segs
+		if len(segs) != 5 {
+			t.Fatalf("Expected 5 segs but got %v", len(segs))
+		}
+	})
+
+	t.Run("IncorrectFormat", func(t *testing.T) {
+		check := func(t *testing.T, fmt string) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Logf("Correctly got a panic: %v", r)
+				} else {
+					t.Fatalf("Expected a panic but did not get one")
+				}
+			}()
+
+			parseLogLine(fmt)
+		}
+
+		tests := map[string]string{}
+
+		addTests := func(name, fmtbase string) {
+			tests[name] = "%" + fmtbase
+			tests[name+"NotAtEnd"] = "%" + fmtbase + "X"
+			tests[name+"MissingEndBrace"] = "%{" + fmtbase
+			tests[name+"MissingEndBraceNotAtEnd"] = "%{" + fmtbase + "X"
+		}
+
+		addTests("BadInt1", "i1")
+		addTests("BadInt3", "i3")
+		addTests("BadInt6", "i6")
+		addTests("BadUint1", "u1")
+		addTests("BadUint3", "u3")
+		addTests("BadUint6", "u6")
+		addTests("BadFloat", "f")
+		addTests("BadFloat32", "f3")
+		addTests("BadFloat64", "f6")
+		addTests("BadComplex", "c")
+		addTests("BadComplex64", "c6")
+		addTests("BadComplex128", "c1")
+		addTests("BadComplex128Alt", "c12")
+		addTests("NoFormatChar", "")
+
+		tests["CorrectButMissingEndBrace"] = "%{b"
+		tests["CorrectButMissingEndBraceNotAtEnd"] = "%{bX"
+
+		for name, fmt := range tests {
+			t.Run(name, func(t *testing.T) { check(t, fmt) })
+		}
+	})
 }
 
 func TestLog(t *testing.T) {
 	check := func(t *testing.T, fmtstring string, toWrite interface{}, dataLen int, checkRest func(*testing.T, []byte) bool) bool {
+		// Reset to avoid running over the loggers limit
+		*curLoggersIdx = 0
 		buf := &bytes.Buffer{}
 		w = bufio.NewWriter(buf)
 		h := AddLogger(fmtstring)
@@ -637,6 +737,49 @@ func TestLog(t *testing.T) {
 			if err := quick.Check(f, nil); err != nil {
 				t.Fatalf("Got error during quick test: %v", err)
 			}
+		})
+	})
+
+	t.Run("IncorrectUse", func(t *testing.T) {
+		t.Run("BadType", func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Logf("Correctly got a panic: %v", r)
+				} else {
+					t.Fatalf("Expected a panic but did not get one")
+				}
+			}()
+
+			// Reset to avoid running over the loggers limit
+			*curLoggersIdx = 0
+			buf := &bytes.Buffer{}
+			w = bufio.NewWriter(buf)
+			h := AddLogger("%b")
+			//t.Log("Handle:", h)
+			w.Flush()
+			buf.Reset()
+
+			Log(h, 42)
+		})
+		t.Run("WrongNumberOfArgs", func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Logf("Correctly got a panic: %v", r)
+				} else {
+					t.Fatalf("Expected a panic but did not get one")
+				}
+			}()
+
+			// Reset to avoid running over the loggers limit
+			*curLoggersIdx = 0
+			buf := &bytes.Buffer{}
+			w = bufio.NewWriter(buf)
+			h := AddLogger("%b")
+			//t.Log("Handle:", h)
+			w.Flush()
+			buf.Reset()
+
+			Log(h, true, 42)
 		})
 	})
 }

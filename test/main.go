@@ -75,7 +75,7 @@ func main() {
 
 	fmt.Println("Nanolog took", time.Since(start))
 
-	nanolog.Close()
+	nanolog.Flush()
 
 	// Set up standard logging package writer / value
 	start = time.Now()
@@ -111,5 +111,7 @@ func main() {
 
 	wg.Wait()
 
-	fmt.Println("Nanolog took", time.Since(start))
+	fmt.Println("Stdlib log took", time.Since(start))
+
+	regout.Flush()
 }

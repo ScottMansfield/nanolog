@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -158,27 +157,33 @@ var (
 )
 
 var (
-	underlying io.Closer     = os.Stderr
-	w          *bufio.Writer = bufio.NewWriter(os.Stderr)
+	w *bufio.Writer
 )
 
 // SetWriter will set up efficient writing for the log to the output stream given.
 // A raw IO stream is best.
-func SetWriter(new io.Writer) {
-	w.Flush()
-	w = bufio.NewWriter(new)
-}
+func SetWriter(new io.Writer) error {
+	// grab write lock to ensure no prblems
+	writeLock.Lock()
+	defer writeLock.Unlock()
 
-func Close() error {
-	err := w.Flush()
-	if err != nil {
-		return err
+	if w != nil {
+		if err := w.Flush(); err != nil {
+			return err
+		}
 	}
 
-	err = underlying.Close()
-	w = nil
+	w = bufio.NewWriter(new)
+	return nil
+}
 
-	return err
+// Flush ensures all log entries written up to this point are written to the underlying io.Writer
+func Flush() error {
+	// grab write lock to ensure no prblems
+	writeLock.Lock()
+	defer writeLock.Unlock()
+
+	return w.Flush()
 }
 
 // AddLogger initializes a logger and returns a handle for future logging
@@ -363,6 +368,9 @@ func parseLogLine(gold string) (Logger, []string) {
 		}
 
 		if requireBrace {
+			if len(*f) == 0 {
+				logpanic("Missing '}' character at end of line", gold)
+			}
 			if next(f) != '}' {
 				logpanic("Missing '}' character", gold)
 			}
