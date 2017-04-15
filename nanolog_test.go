@@ -18,11 +18,25 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"io/ioutil"
+	"math/rand"
 	"reflect"
 	"testing"
 )
 
-import "io/ioutil"
+var testLetters = []rune("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randString() string {
+	n := rand.Intn(10) + 10
+
+	var ret []rune
+
+	for i := 0; i < n; i++ {
+		ret = append(ret, testLetters[rand.Intn(len(testLetters))])
+	}
+
+	return string(ret)
+}
 
 func TestAddLogger(t *testing.T) {
 	genTest := func(logLine string, expectedKinds []reflect.Kind, expectedSegs []string) func(*testing.T) {
@@ -128,6 +142,22 @@ func TestAddLogger(t *testing.T) {
 			line:     "%{" + symbol + "}",
 			expKinds: []reflect.Kind{kind},
 			expSegs:  empties,
+		}
+
+		s1, s2 := randString(), randString()
+
+		tm[name+"WithStrings"] = testdat{
+			line:     s1 + "%" + symbol + s2,
+			expKinds: []reflect.Kind{kind},
+			expSegs:  []string{s1, s2},
+		}
+
+		s1, s2 = randString(), randString()
+
+		tm[name+"BracketsWithStrings"] = testdat{
+			line:     s1 + "%{" + symbol + "}" + s2,
+			expKinds: []reflect.Kind{kind},
+			expSegs:  []string{s1, s2},
 		}
 	}
 
