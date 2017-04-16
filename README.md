@@ -7,9 +7,13 @@ It's about 2x faster than the equivalent stdlib `log` package usage and the outp
 
 ## Usage
 
+### Logging at runtime
+
 Add loggers by registering them in an init function in any package using `AddLogger`. The main package should set the writer for the logging system (using the `SetWriter` method) before doing much of anything else, as log writes are buffered in memory until the writer is set. Writes include the data `AddLogger` generates, so by the time `main` gets started there's likely data waiting. Log lines are written using the `Log` method.
 
 ```go
+import "github.com/ScottMansfield/nanolog"
+
 var h nanolog.Handle
 
 func init() {
@@ -19,6 +23,17 @@ func init() {
 func main() {
     nanolog.Log(h, int32())
 }
+```
+
+### Inflating the logs
+
+The logs are written in an efficient format and are thus not human-readable. In order to be able to read them, you will need to "inflate" them. Each log file is self-contained, so the tooling doesn't need any external information to parse the file.
+
+First, compile the `inflate` tool, then use it on the log output file. The tool outputs to stdout, so if you want to save the output for later, make sure to direct it to another file. The following example assumes your log output is stored in `foo.clog`.
+
+```
+$ go build github.com/ScottMansfield/nanolog/cmd/inflate
+$ ./inflate -f foo.clog > foo-inflated.log
 ```
 
 ## Format
