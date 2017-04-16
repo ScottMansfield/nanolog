@@ -24,11 +24,11 @@ import (
 	"time"
 
 	"github.com/ScottMansfield/nanolog"
+	"github.com/ScottMansfield/nanolog/test/pkg"
 )
 
 var (
-	logWorking  nanolog.Handle
-	logFinished nanolog.Handle
+	logWorking nanolog.Handle
 )
 
 func init() {
@@ -40,7 +40,6 @@ func init() {
 	nanolog.SetWriter(nanologout)
 
 	logWorking = nanolog.AddLogger("Worker %u8, working on task %i, attempt %i.")
-	logFinished = nanolog.AddLogger("Finished task %i. Result was: %f64, string version %s")
 }
 
 func main() {
@@ -64,7 +63,7 @@ func main() {
 
 				s := fmt.Sprintf("%f", v)
 
-				nanolog.Log(logFinished, i, v, s)
+				nanolog.Log(pkg.LogFinished, i, v, s)
 			}
 
 			wg.Done()

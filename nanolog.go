@@ -157,23 +157,32 @@ var (
 )
 
 var (
-	w *bufio.Writer
+	initBuf  = &bytes.Buffer{}
+	w        = bufio.NewWriter(initBuf)
+	firstSet = true
 )
 
 // SetWriter will set up efficient writing for the log to the output stream given.
-// A raw IO stream is best.
+// A raw IO stream is best. The first time SetWriter is called any logs that were
+// created or posted before the call will be sent to the writer all in one go.
 func SetWriter(new io.Writer) error {
 	// grab write lock to ensure no prblems
 	writeLock.Lock()
 	defer writeLock.Unlock()
 
-	if w != nil {
-		if err := w.Flush(); err != nil {
+	if err := w.Flush(); err != nil {
+		return err
+	}
+
+	w = bufio.NewWriter(new)
+
+	if firstSet {
+		firstSet = false
+		if _, err := initBuf.WriteTo(w); err != nil {
 			return err
 		}
 	}
 
-	w = bufio.NewWriter(new)
 	return nil
 }
 
