@@ -16,14 +16,12 @@ package main
 
 import (
 	"bufio"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"io"
 	"math"
 	"os"
-
-	"encoding/binary"
-
 	"reflect"
 
 	"github.com/ScottMansfield/nanolog"
