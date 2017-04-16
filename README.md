@@ -1,5 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/ScottMansfield/nanolog?status.svg)](https://godoc.org/github.com/ScottMansfield/nanolog)
 [![GoReportCard](https://goreportcard.com/badge/github.com/ScottMansfield/nanolog)](https://goreportcard.com/report/github.com/ScottMansfield/nanolog)
+[![Coverage Status](https://coveralls.io/repos/github/ScottMansfield/nanolog/badge.svg?branch=master)](https://coveralls.io/github/ScottMansfield/nanolog?branch=master)
 
 # nanolog
 "Nanosecond scale" logger inspired by https://github.com/PlatformLab/NanoLog
