@@ -5,11 +5,15 @@
 
 It's about 2x faster than the equivalent stdlib `log` package usage and the output log files are about 1/2 the size. These ratios should increase and decrease, respectively, as the amount of unchanging data in each log line increases.
 
+The `AddLogger` method returns a `nanolog.Handle` to an internal data structure that keeps track of the data reuired to ensure proper operation. This handle is just a simple number identifier. You can think of `AddLogger` like adding a prepared statement in a database. You supply the unchanging information up front, and the system holds on to that while you give it to the changing data. Overall this is much more efficient because less data is transferred.
+
 ## Usage
 
 ### Logging at runtime
 
 Add loggers by registering them in an init function in any package using `AddLogger`. The main package should set the writer for the logging system (using the `SetWriter` method) before doing much of anything else, as log writes are buffered in memory until the writer is set. Writes include the data `AddLogger` generates, so by the time `main` gets started there's likely data waiting. Log lines are written using the `Log` method.
+
+At the end of the `main` method in your program, you should ensure that you call `nanolog.Flush()` to ensure that the data that has been logged is sent to the writer you supplied. Otherwise, some data may get lost.
 
 ```go
 import "github.com/ScottMansfield/nanolog"
@@ -21,7 +25,8 @@ func init() {
 }
 
 func main() {
-    nanolog.Log(h, int32())
+    nanolog.Log(h, int32(4))
+    nanoLog.Flush()
 }
 ```
 
@@ -41,7 +46,7 @@ $ ./inflate -f foo.clog > foo-inflated.log
 The logger is created with a string format. The interpolation tokens are prefixed using a percentage sign (`%`) and surrounded by optional curly braces when you need to disambiguate. This can be useful if you want to interpolate an `int` but for some reason need to put a number after it that might confuse the system, like a 1, 3, or 6.
 
 ```
-nanolog.AddLogget("Disambiguate this: %{i}32")
+nanolog.AddLogger("Disambiguate this: %{i}32")
 ```
 
 In order to output a literal `%`, you use two of them in a row to escape the second one.
