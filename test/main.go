@@ -32,14 +32,14 @@ var (
 )
 
 func init() {
+	logWorking = nanolog.AddLogger("Worker %u8, working on task %i, attempt %i.")
+
 	// Set up nanolog writer
 	nanologout, err := os.Create("foo.clog")
 	if err != nil {
 		panic(err)
 	}
 	nanolog.SetWriter(nanologout)
-
-	logWorking = nanolog.AddLogger("Worker %u8, working on task %i, attempt %i.")
 }
 
 func main() {
