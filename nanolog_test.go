@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io/ioutil"
+	"log"
 	"math"
 	"math/rand"
 	"reflect"
@@ -26,7 +27,7 @@ import (
 	"testing/quick"
 )
 
-var testLetters = []rune("abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var testLetters = []rune("abcdefghijklmnopqrstuvwxyz0245789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func randString() string {
 	n := rand.Intn(10) + 10
@@ -74,6 +75,12 @@ func TestFlush(t *testing.T) {
 func TestAddLogger(t *testing.T) {
 	genTest := func(logLine string, expectedKinds []reflect.Kind, expectedSegs []string) func(*testing.T) {
 		return func(t *testing.T) {
+			if r := recover(); r != nil {
+				t.Fatalf("Panic!: %v", r)
+			} else {
+				t.Logf("No panic.")
+			}
+
 			// Reset to avoid running over the loggers limit
 			*curLoggersIdx = 0
 			buf := &bytes.Buffer{}
@@ -826,4 +833,22 @@ func BenchmarkLogSequential(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		Log(h, int64(1), "string", uint32(2), uint32(3))
 	}
+}
+
+func BenchmarkCompareToStdlib(b *testing.B) {
+	b.Run("Nanolog", func(b *testing.B) {
+		w = bufio.NewWriter(ioutil.Discard)
+		h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+
+		for i := 0; i < b.N; i++ {
+			Log(h, int64(1), "string", uint32(2), uint32(3))
+		}
+	})
+	b.Run("Stdlib", func(b *testing.B) {
+		l := log.New(ioutil.Discard, "", 0)
+		for i := 0; i < b.N; i++ {
+			l.Printf("foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.",
+				int64(1), "string", uint32(2), uint32(3))
+		}
+	})
 }
