@@ -27,7 +27,7 @@ import (
 	"testing/quick"
 )
 
-var testLetters = []rune("abcdefghijklmnopqrstuvwxyz0245789ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var testLetters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func randString() string {
 	n := rand.Intn(10) + 10
@@ -81,6 +81,9 @@ func TestAddLogger(t *testing.T) {
 				t.Logf("No panic.")
 			}
 
+			t.Logf("Expected kinds: %v", expectedKinds)
+			t.Logf("Expected segs: %v", expectedSegs)
+
 			// Reset to avoid running over the loggers limit
 			*curLoggersIdx = 0
 			buf := &bytes.Buffer{}
@@ -91,6 +94,8 @@ func TestAddLogger(t *testing.T) {
 
 			w.Flush()
 			out := buf.Bytes()
+
+			//t.Log(string(out))
 
 			expLen := 1 + 4 + 4 + len(expectedKinds)
 			for _, s := range expectedSegs {
@@ -840,6 +845,7 @@ func BenchmarkCompareToStdlib(b *testing.B) {
 		w = bufio.NewWriter(ioutil.Discard)
 		h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
 
+		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			Log(h, int64(1), "string", uint32(2), uint32(3))
 		}
