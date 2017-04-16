@@ -8,7 +8,7 @@
 
 It's about 2x faster than the equivalent stdlib `log` package usage and the output log files are about 1/2 the size. These ratios should increase and decrease, respectively, as the amount of unchanging data in each log line increases.
 
-The `AddLogger` method returns a `nanolog.Handle` to an internal data structure that keeps track of the data reuired to ensure proper operation. This handle is just a simple number identifier. You can think of `AddLogger` like adding a prepared statement in a database. You supply the unchanging information up front, and the system holds on to that while you give it to the changing data. Overall this is much more efficient because less data is transferred.
+The `AddLogger` method returns a `nanolog.Handle` to an internal data structure that keeps track of the data required to ensure proper operation. This handle is just a simple number identifier. You can think of `AddLogger` like adding a prepared statement in a database. You supply the unchanging information up front, and the system holds on to that while you give it to the changing data. Overall this is much more efficient because less data is transferred.
 
 ## Usage
 
