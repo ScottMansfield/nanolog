@@ -1,2 +1,78 @@
 # go-nanolog
-Nanosecond scale logger inspired by https://github.com/PlatformLab/NanoLog
+"Nanosecond scale" logger inspired by https://github.com/PlatformLab/NanoLog
+
+## Why?
+
+It's about 2x faster than the equivalent stdlib `log` package usage and the output log files are about 1/2 the size. These ratios should increase and decrease, respectively, as the amount of unchanging data in each log line increases.
+
+## Usage
+
+Add loggers by registering them in an init function in any package using `AddLogger`. The main package should set the writer for the logging system (using the `SetWriter` method) before doing much of anything else, as log writes are buffered in memory until the writer is set. Writes include the data `AddLogger` generates, so by the time `main` gets started there's likely data waiting. Log lines are written using the `Log` method.
+
+```go
+var h nanolog.Handle
+
+func init() {
+    h = nanolog.AddLogger("Example %i32 log %{s} line %c128")
+}
+
+func main() {
+    nanolog.Log(h, int32())
+}
+```
+
+## Format
+
+The logger is created with a string format. The interpolation tokens are prefixed using a percentage sign (`%`) and surrounded by optional curly braces when you need to disambiguate. This can be useful if you want to interpolate an `int` but for some reason need to put a number after it that might confuse the system, like a 1, 3, or 6.
+
+```
+nanolog.AddLogget("Disambiguate this: %{i}32")
+```
+
+## Types
+
+The types that can be interpolated are limited, for now, to those in the following table. The corresponding interpolation tokens are listed next
+to each type.
+
+| Type       | Token |
+|------------|-------|
+| Bool       | b     |
+| Int        | i     |
+| Int8       | i8    |
+| Int16      | i16   |
+| Int32      | i32   |
+| Int64      | i64   |
+| Uint       | u     |
+| Uint8      | u8    |
+| Uint16     | u16   |
+| Uint32     | u32   |
+| Uint64     | u64   |
+| Float32    | f32   |
+| Float64    | f64   |
+| Complex64  | c64   |
+| Complex128 | c128  |
+| String     | s     |
+
+The logging system is strict when it comes to types. For example, an `int16` will not work in a slot meant for an `int`.
+
+## Benchmark
+
+This benchmark is in the `nanolog_test.go` file. It compares the following log line time to log for both `nanolog` and the stdlib `log` package.
+
+nanolog:
+```
+foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.
+```
+
+stdlib:
+```
+foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.
+```
+
+```
+$ go test -bench CompareToStdlib -count 100 >> bench
+$ benchstat bench
+name                       time/op
+CompareToStdlib/Nanolog-8  290ns ± 3%
+CompareToStdlib/Stdlib-8   571ns ± 2%
+```
