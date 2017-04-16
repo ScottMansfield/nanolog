@@ -12,28 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package nanolog
-
-import (
-	"bufio"
-	"bytes"
-	"encoding/binary"
-	"fmt"
-	"io"
-	"math"
-	"reflect"
-	"sync"
-	"sync/atomic"
-	"unicode/utf8"
-)
-
-// MaxLoggers is the maximum number of different loggers that are allowed
-const MaxLoggers = 10240
-
-// The format string is a straightforward format inspired by the full fledged
-// fmt.Fprintf function. The codes are unique to this package, so normal fmt
-// documentation is not be applicable.
-
+// Package nanolog is a package to speed up your logging.
+//
+// The format string is inspired by the full fledged fmt.Fprintf function. The
+// codes are unique to this package, so normal fmt documentation is not be applicable.
+//
 // THe format string is similar to fmt in that it uses the percent sign (a.k.a.
 // the modulo operator) to signify the start of a format code. The reader is
 // greedy, meaning that the parser will attempt to read as much as it can for a
@@ -41,7 +24,7 @@ const MaxLoggers = 10240
 // format string immediately followed by the number 1 and a space ("%i1 "), the
 // parser may complain saying that it encountered an invalid code. To fix this,
 // use curly braces after the percent sign to surround the code: "%{i}1 ".
-
+//
 // Kinds and their corresponding format codes
 //
 // Kind         Code
@@ -72,14 +55,14 @@ const MaxLoggers = 10240
 // String       s
 // Struct
 // UnsafePointer
-
+//
 // The file format has two categories of data:
 //
 // 1. Log line information to reconstruct logs later
 // 2. Actual log entries
 //
 // The differentiation is done with the entryType, which is prefixed on to the record.
-
+//
 // The log line records are formatted as follows:
 //
 // type:             1 byte - ETLogLine (1)
@@ -89,13 +72,13 @@ const MaxLoggers = 10240
 // segments:
 //   string length:  4 bytes - little endian uint32
 //   string data:    ^length bytes
-
+//
 // The log entry records are formatted as follows:
 //
 // type:    1 byte - ETLogEntry (2)
 // line id: 4 bytes - little endian uint32
 // data+:   var bytes - all the corresponding data for the kinds in the log line entry
-
+//
 // The data is serialized as follows:
 //
 // Bool: 1 byte
@@ -132,20 +115,47 @@ const MaxLoggers = 10240
 // complex128:
 //   Real:    8 bytes as little endian uint64 from float64 bits
 //   Complex: 8 bytes as little endian uint64 from float64 bits
+package nanolog
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"io"
+	"math"
+	"reflect"
+	"sync"
+	"sync/atomic"
+	"unicode/utf8"
+)
+
+// MaxLoggers is the maximum number of different loggers that are allowed
+const MaxLoggers = 10240
 
 // Handle is a simple handle to an internal logging data structure
 // LogHandles are returned by the AddLogger method and used by the Log method to
 // actually log data.
 type Handle uint32
 
+// EntryType is an enum that represents the record headers in the output files to
+// differentiate between log lines and log entries
 type EntryType byte
 
 const (
+	// ETInvalid is an invalid EntryType
 	ETInvalid EntryType = iota
+
+	// ETLogLine means the log line data for a single call to AddLogger is ahead
 	ETLogLine
+
+	// ETLogEntry means the log data for a single call to Log is ahead
 	ETLogEntry
 )
 
+// Logger is the internal struct representing the runtime state of the loggers.
+// The Segs field is not used during logging; it is only used in the inflate
+// utility
 type Logger struct {
 	Kinds []reflect.Kind
 	Segs  []string
