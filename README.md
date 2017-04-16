@@ -44,6 +44,8 @@ The logger is created with a string format. The interpolation tokens are prefixe
 nanolog.AddLogget("Disambiguate this: %{i}32")
 ```
 
+In order to output a literal `%`, you use two of them in a row to escape the second one.
+
 ## Types
 
 The types that can be interpolated are limited, for now, to those in the following table. The corresponding interpolation tokens are listed next
