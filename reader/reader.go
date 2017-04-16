@@ -17,6 +17,7 @@ package reader
 import (
 	"bufio"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -256,7 +257,7 @@ func (r *Reader) Inflate() error {
 					toWrite = complex(real, imag)
 
 				default:
-					panic(fmt.Sprintf("Invalid Kind in logger: %v", logger.Kinds[i-1]))
+					return fmt.Errorf("Invalid Kind in logger: %v", logger.Kinds[i-1])
 				}
 
 				if toWrite != nil {
@@ -272,7 +273,7 @@ func (r *Reader) Inflate() error {
 			r.w.WriteByte('\n')
 
 		default:
-			panic("BAD FILE FORMAT")
+			return errors.New("Bad file format")
 		}
 	}
 

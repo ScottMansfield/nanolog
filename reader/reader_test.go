@@ -67,7 +67,7 @@ func TestReaderEarlyExits(t *testing.T) {
 		t.Run(fmt.Sprintf("Exit%d", i), func(t *testing.T) {
 			defer func() {
 				if r := recover(); r != nil {
-					t.Logf("Panic!: %v", r)
+					t.Fatalf("Panic!: %v", r)
 				} else {
 					t.Logf("No panic.")
 				}
