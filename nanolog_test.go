@@ -823,10 +823,12 @@ func BenchmarkParseLogLine(b *testing.B) {
 func BenchmarkLogParallel(b *testing.B) {
 	w = bufio.NewWriter(ioutil.Discard)
 	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+	args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
+	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			Log(h, int64(1), "string", uint32(2), uint32(3))
+			Log(h, args...)
 		}
 	})
 }
@@ -834,9 +836,11 @@ func BenchmarkLogParallel(b *testing.B) {
 func BenchmarkLogSequential(b *testing.B) {
 	w = bufio.NewWriter(ioutil.Discard)
 	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+	args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		Log(h, int64(1), "string", uint32(2), uint32(3))
+		Log(h, args...)
 	}
 }
 
