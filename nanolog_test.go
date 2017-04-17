@@ -848,17 +848,18 @@ func BenchmarkCompareToStdlib(b *testing.B) {
 	b.Run("Nanolog", func(b *testing.B) {
 		w = bufio.NewWriter(ioutil.Discard)
 		h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
+		args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			Log(h, int64(1), "string", uint32(2), uint32(3))
+			Log(h, args...)
 		}
 	})
 	b.Run("Stdlib", func(b *testing.B) {
+		args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 		l := log.New(ioutil.Discard, "", 0)
 		for i := 0; i < b.N; i++ {
-			l.Printf("foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.",
-				int64(1), "string", uint32(2), uint32(3))
+			l.Printf("foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.", args...)
 		}
 	})
 }
