@@ -128,6 +128,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // MaxLoggers is the maximum number of different loggers that are allowed
@@ -470,12 +471,18 @@ func logpanic(msg, gold string) {
 var (
 	bufpool = &sync.Pool{
 		New: func() interface{} {
-			return &bytes.Buffer{}
+			temp := make([]byte, 1024) // 1k default size
+			return &temp
 		},
 	}
 
 	writeLock = new(sync.Mutex)
 )
+
+type eface struct {
+	_    unsafe.Pointer
+	data unsafe.Pointer
+}
 
 // Log logs to the output stream for the logging package
 func Log(handle Handle, args ...interface{}) error {
@@ -485,14 +492,14 @@ func Log(handle Handle, args ...interface{}) error {
 		panic("Number of args does not match log line")
 	}
 
-	buf := bufpool.Get().(*bytes.Buffer)
-	buf.Reset()
+	buf := bufpool.Get().(*[]byte)
+	*buf = (*buf)[:0]
 	b := make([]byte, 8)
 
-	buf.WriteByte(byte(ETLogEntry))
+	*buf = append(*buf, byte(ETLogEntry))
 
 	binary.LittleEndian.PutUint32(b, uint32(handle))
-	buf.Write(b[:4])
+	*buf = append(*buf, b[:4]...)
 
 	for idx := range l.Kinds {
 		if l.Kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
@@ -503,81 +510,81 @@ func Log(handle Handle, args ...interface{}) error {
 		switch l.Kinds[idx] {
 		case reflect.Bool:
 			if args[idx].(bool) {
-				buf.WriteByte(1)
+				*buf = append(*buf, 1)
 			} else {
-				buf.WriteByte(0)
+				*buf = append(*buf, 0)
 			}
 
 		case reflect.String:
 			s := args[idx].(string)
 			binary.LittleEndian.PutUint32(b, uint32(len(s)))
-			buf.Write(b[:4])
-			buf.WriteString(s)
+			*buf = append(*buf, b[:4]...)
+			*buf = append(*buf, s...)
 
 		// ints
 		case reflect.Int:
 			// Assume generic int is 64 bit
 			i := args[idx].(int)
 			binary.LittleEndian.PutUint64(b, uint64(i))
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		case reflect.Int8:
 			i := args[idx].(int8)
-			buf.WriteByte(byte(i))
+			*buf = append(*buf, byte(i))
 
 		case reflect.Int16:
 			i := args[idx].(int16)
 			binary.LittleEndian.PutUint16(b, uint16(i))
-			buf.Write(b[:2])
+			*buf = append(*buf, b[:2]...)
 
 		case reflect.Int32:
 			i := args[idx].(int32)
 			binary.LittleEndian.PutUint32(b, uint32(i))
-			buf.Write(b[:4])
+			*buf = append(*buf, b[:4]...)
 
 		case reflect.Int64:
 			i := args[idx].(int64)
 			binary.LittleEndian.PutUint64(b, uint64(i))
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		// uints
 		case reflect.Uint:
 			// Assume generic uint is 64 bit
 			i := args[idx].(uint)
 			binary.LittleEndian.PutUint64(b, uint64(i))
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		case reflect.Uint8:
 			i := args[idx].(uint8)
-			buf.WriteByte(byte(i))
+			*buf = append(*buf, byte(i))
 
 		case reflect.Uint16:
 			i := args[idx].(uint16)
 			binary.LittleEndian.PutUint16(b, i)
-			buf.Write(b[:2])
+			*buf = append(*buf, b[:2]...)
 
 		case reflect.Uint32:
 			i := args[idx].(uint32)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b[:4])
+			*buf = append(*buf, b[:4]...)
 
 		case reflect.Uint64:
 			i := args[idx].(uint64)
 			binary.LittleEndian.PutUint64(b, i)
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		// floats
 		case reflect.Float32:
 			f := args[idx].(float32)
 			i := math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b[:4])
+			*buf = append(*buf, b[:4]...)
 
 		case reflect.Float64:
 			f := args[idx].(float64)
 			i := math.Float64bits(f)
 			binary.LittleEndian.PutUint64(b, i)
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		// complex
 		case reflect.Complex64:
@@ -586,12 +593,12 @@ func Log(handle Handle, args ...interface{}) error {
 			f := real(c)
 			i := math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b[:4])
+			*buf = append(*buf, b[:4]...)
 
 			f = imag(c)
 			i = math.Float32bits(f)
 			binary.LittleEndian.PutUint32(b, i)
-			buf.Write(b[:4])
+			*buf = append(*buf, b[:4]...)
 
 		case reflect.Complex128:
 			c := args[idx].(complex128)
@@ -599,12 +606,12 @@ func Log(handle Handle, args ...interface{}) error {
 			f := real(c)
 			i := math.Float64bits(f)
 			binary.LittleEndian.PutUint64(b, i)
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 			f = imag(c)
 			i = math.Float64bits(f)
 			binary.LittleEndian.PutUint64(b, i)
-			buf.Write(b)
+			*buf = append(*buf, b...)
 
 		default:
 			panic(fmt.Sprintf("Invalid Kind in logger: %v", l.Kinds[idx]))
@@ -612,7 +619,7 @@ func Log(handle Handle, args ...interface{}) error {
 	}
 
 	writeLock.Lock()
-	_, err := w.Write(buf.Bytes())
+	_, err := w.Write(*buf)
 	writeLock.Unlock()
 
 	bufpool.Put(buf)
