@@ -496,7 +496,7 @@ func Log(handle Handle, args ...interface{}) error {
 	*buf = append(*buf, b[:4]...)
 
 	for idx := range l.Kinds {
-		if l.Kinds[idx] != reflect.ValueOf(args[idx]).Kind() {
+		if l.Kinds[idx] != reflect.TypeOf(args[idx]).Kind() {
 			panic("Argument type does not match log line")
 		}
 
