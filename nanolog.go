@@ -128,7 +128,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"unicode/utf8"
-	"unsafe"
 )
 
 // MaxLoggers is the maximum number of different loggers that are allowed
@@ -478,11 +477,6 @@ var (
 
 	writeLock = new(sync.Mutex)
 )
-
-type eface struct {
-	_    unsafe.Pointer
-	data unsafe.Pointer
-}
 
 // Log logs to the output stream for the logging package
 func Log(handle Handle, args ...interface{}) error {
