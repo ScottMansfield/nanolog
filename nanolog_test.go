@@ -23,6 +23,8 @@ import (
 	"math"
 	"math/rand"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/quick"
 )
@@ -862,4 +864,48 @@ func BenchmarkCompareToStdlib(b *testing.B) {
 			l.Printf("foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.", args...)
 		}
 	})
+}
+
+const limit = 10
+
+func BenchmarkInterpolations(b *testing.B) {
+	f := func(interp string, item interface{}) func(b *testing.B) {
+		return func(b *testing.B) {
+			for i := 1; i <= limit; i++ {
+				b.Run(strconv.Itoa(i), func(b *testing.B) {
+					w = bufio.NewWriter(ioutil.Discard)
+					h := AddLogger(strings.Repeat(interp, i))
+					args := make([]interface{}, i)
+
+					for j := range args {
+						args[j] = interface{}(item)
+					}
+
+					b.ResetTimer()
+
+					for i := 0; i < b.N; i++ {
+						Log(h, args...)
+					}
+				})
+			}
+		}
+	}
+
+	b.Run("bool", f("%b", true))
+	b.Run("string", f("%s", "this is a string"))
+	b.Run("int", f("%i", 4))
+	b.Run("int8", f("%i8", int8(4)))
+	b.Run("int16", f("%i16", int16(4)))
+	b.Run("int32", f("%i32", int32(4)))
+	b.Run("int64", f("%i64", int64(4)))
+	b.Run("uint", f("%u", uint(4)))
+	b.Run("uint8", f("%u8", uint8(4)))
+	b.Run("uint16", f("%u16", uint16(4)))
+	b.Run("uint32", f("%u32", uint32(4)))
+	b.Run("uint64", f("%u64", uint64(4)))
+	b.Run("float32", f("%f32", float32(4)))
+	b.Run("float64", f("%f64", float64(4)))
+	b.Run("complex64", f("%c64", complex(float32(4), float32(4))))
+	b.Run("complex128", f("%c128", complex(float64(4), float64(4))))
+
 }
