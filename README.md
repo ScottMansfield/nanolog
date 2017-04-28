@@ -3,11 +3,12 @@
 [![Coverage Status](https://coveralls.io/repos/github/ScottMansfield/nanolog/badge.svg?branch=master)](https://coveralls.io/github/ScottMansfield/nanolog?branch=master)
 
 # nanolog
+
 "Nanosecond scale" logger inspired by https://github.com/PlatformLab/NanoLog
 
 ## Why?
 
-It's about 2x faster than the equivalent stdlib `log` package usage and the output log files are about 1/2 the size. These ratios should increase and decrease, respectively, as the amount of unchanging data in each log line increases.
+It's about 3.75x faster than the equivalent stdlib `log` package usage and the output log files are about 1/2 the size. These ratios should increase and decrease, respectively, as the amount of unchanging data in each log line increases.
 
 The `AddLogger` method returns a `nanolog.Handle` to an internal data structure that keeps track of the data required to ensure proper operation. This handle is just a simple number identifier. You can think of `AddLogger` like adding a prepared statement in a database. You supply the unchanging information up front, and the system holds on to that while you give it to the changing data. Overall this is much more efficient because less data is transferred.
 
@@ -29,7 +30,7 @@ func init() {
 }
 
 func main() {
-    nanolog.Log(h, int32(4))
+    nanolog.Log(h, int32(4), "this is a string", 4i)
     nanoLog.Flush()
 }
 ```
@@ -99,6 +100,6 @@ foo thing bar thing %d. Fubar %s foo. sadfasdf %d sdfasfasdfasdffds %d.
 $ go test -bench CompareToStdlib -count 100 >> bench
 $ benchstat bench
 name                       time/op
-CompareToStdlib/Nanolog-8  290ns ± 3%
-CompareToStdlib/Stdlib-8   571ns ± 2%
+CompareToStdlib/Nanolog-8  120ns ± 3%
+CompareToStdlib/Stdlib-8   452ns ± 3%
 ```
