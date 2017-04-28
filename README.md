@@ -21,18 +21,25 @@ Add loggers by registering them in an init function in any package using `AddLog
 At the end of the `main` method in your program, you should ensure that you call `nanolog.Flush()` to ensure that the data that has been logged is sent to the writer you supplied. Otherwise, some data may get lost.
 
 ```go
-import "github.com/ScottMansfield/nanolog"
+package main
+
+import (
+	"os"
+	"github.com/ScottMansfield/nanolog"
+)
 
 var h nanolog.Handle
 
 func init() {
-    h = nanolog.AddLogger("Example %i32 log %{s} line %c128")
+	nanolog.SetWriter(os.Stderr)
+	h = nanolog.AddLogger("Example %i32 log %{s} line %c128")
 }
 
 func main() {
-    nanolog.Log(h, int32(4), "this is a string", 4i)
-    nanoLog.Flush()
+	nanolog.Log(h, int32(4), "this is a string", 4i)
+	nanolog.Flush()
 }
+
 ```
 
 ### Inflating the logs
