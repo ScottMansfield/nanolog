@@ -17,7 +17,7 @@
 // The format string is inspired by the full fledged fmt.Fprintf function. The
 // codes are unique to this package, so normal fmt documentation is not be applicable.
 //
-// THe format string is similar to fmt in that it uses the percent sign (a.k.a.
+// The format string is similar to fmt in that it uses the percent sign (a.k.a.
 // the modulo operator) to signify the start of a format code. The reader is
 // greedy, meaning that the parser will attempt to read as much as it can for a
 // code before it stops. E.g. if you have a generic int in the middle of your
@@ -25,96 +25,96 @@
 // parser may complain saying that it encountered an invalid code. To fix this,
 // use curly braces after the percent sign to surround the code: "%{i}1 ".
 //
-// Kinds and their corresponding format codes
+// Kinds and their corresponding format codes:
 //
-// Kind         Code
-// ------------------------
-// Bool         b
-// Int          i
-// Int8         i8
-// Int16        i16
-// Int32        i32
-// Int64        i64
-// Uint         u
-// Uint8        u8
-// Uint16       u16
-// Uint32       u32
-// Uint64       u64
-// Uintptr
-// Float32      f32
-// Float64      f64
-// Complex64    c64
-// Complex128   c128
-// Array
-// Chan
-// Func
-// Interface
-// Map
-// Ptr
-// Slice
-// String       s
-// Struct
-// UnsafePointer
+//  Kind          | Code
+//  --------------|-------------
+//  Bool          | b
+//  Int           | i
+//  Int8          | i8
+//  Int16         | i16
+//  Int32         | i32
+//  Int64         | i64
+//  Uint          | u
+//  Uint8         | u8
+//  Uint16        | u16
+//  Uint32        | u32
+//  Uint64        | u64
+//  Uintptr       |
+//  Float32       | f32
+//  Float64       | f64
+//  Complex64     | c64
+//  Complex128    | c128
+//  Array         |
+//  Chan          |
+//  Func          |
+//  Interface     |
+//  Map           |
+//  Ptr           |
+//  Slice         |
+//  String        | s
+//  Struct        |
+//  UnsafePointer |
 //
 // The file format has two categories of data:
 //
-// 1. Log line information to reconstruct logs later
-// 2. Actual log entries
+//  1. Log line information to reconstruct logs later
+//  2. Actual log entries
 //
 // The differentiation is done with the entryType, which is prefixed on to the record.
 //
 // The log line records are formatted as follows:
 //
-// type:             1 byte - ETLogLine (1)
-// id:               4 bytes - little endian uint32
-// # of string segs: 4 bytes - little endian uint32
-// kinds:            (#segs - 1) bytes, each being a reflect.Kind
-// segments:
-//   string length:  4 bytes - little endian uint32
-//   string data:    ^length bytes
+//  - type:             1 byte - ETLogLine (1)
+//  - id:               4 bytes - little endian uint32
+//  - # of string segs: 4 bytes - little endian uint32
+//  - kinds:            (#segs - 1) bytes, each being a reflect.Kind
+//  - segments:
+//    - string length:  4 bytes - little endian uint32
+//    - string data:    ^length bytes
 //
 // The log entry records are formatted as follows:
 //
-// type:    1 byte - ETLogEntry (2)
-// line id: 4 bytes - little endian uint32
-// data+:   var bytes - all the corresponding data for the kinds in the log line entry
+//  - type:    1 byte - ETLogEntry (2)
+//  - line id: 4 bytes - little endian uint32
+//  - data+:   var bytes - all the corresponding data for the kinds in the log line entry
 //
 // The data is serialized as follows:
 //
-// Bool: 1 byte
-//   False: 0 or True: 1
+//  - Bool: 1 byte
+//    - False: 0 or True: 1
 //
-// String: 4 + len(string) bytes
-//   Length: 4 bytes - little endian uint32
-//   String bytes: Length bytes
+//  - String: 4 + len(string) bytes
+//    - Length: 4 bytes - little endian uint32
+//    - String bytes: Length bytes
 //
-// int family:
-//   int:    8 bytes - int64 as little endian uint64
-//   int8:  1 byte
-//   int16: 2 bytes - int16 as little endian uint16
-//   int32: 4 bytes - int32 as little endian uint32
-//   int64: 8 bytes - int64 as little endian uint64
+//  - int family:
+//     - int:    8 bytes - int64 as little endian uint64
+//     - int8:  1 byte
+//     - int16: 2 bytes - int16 as little endian uint16
+//     - int32: 4 bytes - int32 as little endian uint32
+//     - int64: 8 bytes - int64 as little endian uint64
 //
-// uint family:
-//   uint:   8 bytes - little endian uint64
-//   uint8:  1 byte
-//   uint16: 2 bytes - little endian uint16
-//   uint32: 4 bytes - little endian uint32
-//   uint64: 8 bytes - little endian uint64
+//  - uint family:
+//    - uint:   8 bytes - little endian uint64
+//    - uint8:  1 byte
+//    - uint16: 2 bytes - little endian uint16
+//    - uint32: 4 bytes - little endian uint32
+//    - uint64: 8 bytes - little endian uint64
 //
-// float32:
-//   4 bytes as little endian uint32 from float32 bits
+//  - float32:
+//    - 4 bytes as little endian uint32 from float32 bits
 //
-// float64:
-//   8 bytes as little endian uint64 from float64 bits
+//  - float64:
+//    - 8 bytes as little endian uint64 from float64 bits
 //
-// complex64:
-//   Real:    4 bytes as little endian uint32 from float32 bits
-//   Complex: 4 bytes as little endian uint32 from float32 bits
+//  - complex64:
+//    - Real:    4 bytes as little endian uint32 from float32 bits
+//    - Complex: 4 bytes as little endian uint32 from float32 bits
 //
-// complex128:
-//   Real:    8 bytes as little endian uint64 from float64 bits
-//   Complex: 8 bytes as little endian uint64 from float64 bits
+//  - complex128:
+//    - Real:    8 bytes as little endian uint64 from float64 bits
+//    - Complex: 8 bytes as little endian uint64 from float64 bits
 package nanolog
 
 import (
