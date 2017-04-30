@@ -48,7 +48,7 @@ func TestSetWriter(t *testing.T) {
 	SetWriter(buf)
 
 	// simulate some logging
-	w.WriteByte(35)
+	defaultLogWriter.w.WriteByte(35)
 
 	SetWriter(&bytes.Buffer{})
 
@@ -65,7 +65,7 @@ func TestFlush(t *testing.T) {
 	SetWriter(buf)
 
 	// simulate some logging
-	w.WriteByte(35)
+	defaultLogWriter.w.WriteByte(35)
 
 	Flush()
 
@@ -87,14 +87,14 @@ func TestAddLogger(t *testing.T) {
 			t.Logf("Expected segs: %v", expectedSegs)
 
 			// Reset to avoid running over the loggers limit
-			*curLoggersIdx = 0
+			*defaultLogWriter.curLoggersIdx = 0
 			buf := &bytes.Buffer{}
-			w = bufio.NewWriter(buf)
+			defaultLogWriter.w = bufio.NewWriter(buf)
 			h := AddLogger(logLine)
 
 			//t.Log("Handle:", h)
 
-			w.Flush()
+			defaultLogWriter.w.Flush()
 			out := buf.Bytes()
 
 			//t.Log(string(out))
@@ -241,7 +241,7 @@ func TestAddLoggerLimit(t *testing.T) {
 		}
 
 		// reset so other tests can actually continue testing
-		*curLoggersIdx = 0
+		*defaultLogWriter.curLoggersIdx = 0
 	}()
 
 	t.Logf("Filling up loggers")
@@ -253,7 +253,7 @@ func TestAddLoggerLimit(t *testing.T) {
 func TestParseLogLine(t *testing.T) {
 	t.Run("Correct", func(t *testing.T) {
 		buf := &bytes.Buffer{}
-		w = bufio.NewWriter(buf)
+		defaultLogWriter.w = bufio.NewWriter(buf)
 		f := "foo thing bar thing %i64. Fubar %s foo. sadf %% asdf %u32 sdfasfasdfasdffds %u32."
 		l, segs := parseLogLine(f)
 
@@ -317,17 +317,17 @@ func TestParseLogLine(t *testing.T) {
 func TestLog(t *testing.T) {
 	check := func(t *testing.T, fmtstring string, toWrite interface{}, dataLen int, checkRest func(*testing.T, []byte) bool) bool {
 		// Reset to avoid running over the loggers limit
-		*curLoggersIdx = 0
+		*defaultLogWriter.curLoggersIdx = 0
 		buf := &bytes.Buffer{}
-		w = bufio.NewWriter(buf)
+		defaultLogWriter.w = bufio.NewWriter(buf)
 		h := AddLogger(fmtstring)
 		//t.Log("Handle:", h)
-		w.Flush()
+		defaultLogWriter.w.Flush()
 		buf.Reset()
 
 		Log(h, toWrite)
 
-		w.Flush()
+		defaultLogWriter.w.Flush()
 		out := buf.Bytes()
 
 		expectedLen := 1 + 4 + dataLen
@@ -765,12 +765,12 @@ func TestLog(t *testing.T) {
 			}()
 
 			// Reset to avoid running over the loggers limit
-			*curLoggersIdx = 0
+			*defaultLogWriter.curLoggersIdx = 0
 			buf := &bytes.Buffer{}
-			w = bufio.NewWriter(buf)
+			defaultLogWriter.w = bufio.NewWriter(buf)
 			h := AddLogger("%b")
 			//t.Log("Handle:", h)
-			w.Flush()
+			defaultLogWriter.w.Flush()
 			buf.Reset()
 
 			Log(h, 42)
@@ -785,12 +785,12 @@ func TestLog(t *testing.T) {
 			}()
 
 			// Reset to avoid running over the loggers limit
-			*curLoggersIdx = 0
+			*defaultLogWriter.curLoggersIdx = 0
 			buf := &bytes.Buffer{}
-			w = bufio.NewWriter(buf)
+			defaultLogWriter.w = bufio.NewWriter(buf)
 			h := AddLogger("%b")
 			//t.Log("Handle:", h)
-			w.Flush()
+			defaultLogWriter.w.Flush()
 			buf.Reset()
 
 			Log(h, true, 42)
@@ -805,7 +805,7 @@ func BenchmarkAddLogger(b *testing.B) {
 		testLogHandleSink = AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
 
 		// to prevent it from overflowing the logger array
-		*curLoggersIdx = 0
+		*defaultLogWriter.curLoggersIdx = 0
 	}
 }
 
@@ -815,7 +815,7 @@ var (
 )
 
 func BenchmarkParseLogLine(b *testing.B) {
-	w = bufio.NewWriter(ioutil.Discard)
+	defaultLogWriter.w = bufio.NewWriter(ioutil.Discard)
 	f := "The operation %s could not be completed. Wanted %u64 bar %c128 %b %{s} %{i32}"
 	for i := 0; i < b.N; i++ {
 		testLoggerSink, testSegmentsSink = parseLogLine(f)
@@ -823,7 +823,7 @@ func BenchmarkParseLogLine(b *testing.B) {
 }
 
 func BenchmarkLogParallel(b *testing.B) {
-	w = bufio.NewWriter(ioutil.Discard)
+	defaultLogWriter.w = bufio.NewWriter(ioutil.Discard)
 	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
 	args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
@@ -836,7 +836,7 @@ func BenchmarkLogParallel(b *testing.B) {
 }
 
 func BenchmarkLogSequential(b *testing.B) {
-	w = bufio.NewWriter(ioutil.Discard)
+	defaultLogWriter.w = bufio.NewWriter(ioutil.Discard)
 	h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
 	args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
@@ -848,7 +848,7 @@ func BenchmarkLogSequential(b *testing.B) {
 
 func BenchmarkCompareToStdlib(b *testing.B) {
 	b.Run("Nanolog", func(b *testing.B) {
-		w = bufio.NewWriter(ioutil.Discard)
+		defaultLogWriter.w = bufio.NewWriter(ioutil.Discard)
 		h := AddLogger("foo thing bar thing %i64. Fubar %s foo. sadfasdf %u32 sdfasfasdfasdffds %u32.")
 		args := []interface{}{int64(1), "string", uint32(2), uint32(3)}
 
@@ -872,7 +872,7 @@ func BenchmarkInterpolations(b *testing.B) {
 		return func(b *testing.B) {
 			for i := 1; i <= limit; i++ {
 				b.Run(strconv.Itoa(i), func(b *testing.B) {
-					w = bufio.NewWriter(ioutil.Discard)
+					defaultLogWriter.w = bufio.NewWriter(ioutil.Discard)
 					h := AddLogger(strings.Repeat(interp, i))
 					args := make([]interface{}, i)
 
