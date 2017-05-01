@@ -161,34 +161,64 @@ type Logger struct {
 	Segs  []string
 }
 
-var (
-	loggers       = make([]Logger, MaxLoggers)
-	curLoggersIdx = new(uint32)
-)
+var defaultLogWriter = New()
 
-var (
-	initBuf  = &bytes.Buffer{}
-	w        = bufio.NewWriter(initBuf)
-	firstSet = true
-)
+type LogWriter interface {
+	// SetWriter will set up efficient writing for the log to the output stream given.
+	// A raw IO stream is best. The first time SetWriter is called any logs that were
+	// created or posted before the call will be sent to the writer all in one go.
+	SetWriter(new io.Writer) error
+	// Flush ensures all log entries written up to this point are written to the underlying io.Writer
+	Flush() error
+	// AddLogger initializes a logger and returns a handle for future logging
+	AddLogger(fmt string) Handle
+	// Log logs to the output stream
+	Log(handle Handle, args ...interface{}) error
+}
 
-// SetWriter will set up efficient writing for the log to the output stream given.
-// A raw IO stream is best. The first time SetWriter is called any logs that were
-// created or posted before the call will be sent to the writer all in one go.
+type logWriter struct {
+	initBuf  *bytes.Buffer
+	w        *bufio.Writer
+	firstSet bool
+
+	writeLock sync.Locker
+
+	loggers       []Logger
+	curLoggersIdx *uint32
+}
+
+// New creates a new LogWriter
+func New() LogWriter {
+	initBuf := &bytes.Buffer{}
+	return &logWriter{
+		initBuf:       initBuf,
+		w:             bufio.NewWriter(initBuf),
+		firstSet:      true,
+		writeLock:     new(sync.Mutex),
+		loggers:       make([]Logger, MaxLoggers),
+		curLoggersIdx: new(uint32),
+	}
+}
+
+// SetWriter calls LogWriter.SetWriter on the default log writer.
 func SetWriter(new io.Writer) error {
-	// grab write lock to ensure no prblems
-	writeLock.Lock()
-	defer writeLock.Unlock()
+	return defaultLogWriter.SetWriter(new)
+}
 
-	if err := w.Flush(); err != nil {
+func (lw *logWriter) SetWriter(new io.Writer) error {
+	// grab write lock to ensure no problems
+	lw.writeLock.Lock()
+	defer lw.writeLock.Unlock()
+
+	if err := lw.w.Flush(); err != nil {
 		return err
 	}
 
-	w = bufio.NewWriter(new)
+	lw.w = bufio.NewWriter(new)
 
-	if firstSet {
-		firstSet = false
-		if _, err := initBuf.WriteTo(w); err != nil {
+	if lw.firstSet {
+		lw.firstSet = false
+		if _, err := lw.initBuf.WriteTo(lw.w); err != nil {
 			return err
 		}
 	}
@@ -196,28 +226,36 @@ func SetWriter(new io.Writer) error {
 	return nil
 }
 
-// Flush ensures all log entries written up to this point are written to the underlying io.Writer
+// Flush calls LogWriter.Flush on the default log writer.
 func Flush() error {
-	// grab write lock to ensure no prblems
-	writeLock.Lock()
-	defer writeLock.Unlock()
-
-	return w.Flush()
+	return defaultLogWriter.Flush()
 }
 
-// AddLogger initializes a logger and returns a handle for future logging
+func (lw *logWriter) Flush() error {
+	// grab write lock to ensure no prblems
+	lw.writeLock.Lock()
+	defer lw.writeLock.Unlock()
+
+	return lw.w.Flush()
+}
+
+// AddLogger calls LogWriter.AddLogger on the default log writer.
 func AddLogger(fmt string) Handle {
+	return defaultLogWriter.AddLogger(fmt)
+}
+
+func (lw *logWriter) AddLogger(fmt string) Handle {
 	// save some kind of string format to the file
-	idx := atomic.AddUint32(curLoggersIdx, 1) - 1
+	idx := atomic.AddUint32(lw.curLoggersIdx, 1) - 1
 
 	if idx >= MaxLoggers {
 		panic("Too many loggers")
 	}
 
 	l, segs := parseLogLine(fmt)
-	loggers[idx] = l
+	lw.loggers[idx] = l
 
-	writeLogDataToFile(idx, l.Kinds, segs)
+	lw.writeLogDataToFile(idx, l.Kinds, segs)
 
 	return Handle(idx)
 }
@@ -424,7 +462,7 @@ func next(s *string) rune {
 	return r
 }
 
-func writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
+func (lw *logWriter) writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
 	buf := &bytes.Buffer{}
 	b := make([]byte, 4)
 
@@ -459,7 +497,7 @@ func writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
 	}
 
 	// finally write all of it together to the output
-	w.Write(buf.Bytes())
+	lw.w.Write(buf.Bytes())
 }
 
 // helper function to have consistently formatted panics and shorter code above
@@ -474,13 +512,15 @@ var (
 			return &temp
 		},
 	}
-
-	writeLock = new(sync.Mutex)
 )
 
-// Log logs to the output stream for the logging package
+// Log calls LogWriter.Log on the default log writer.
 func Log(handle Handle, args ...interface{}) error {
-	l := loggers[handle]
+	return defaultLogWriter.Log(handle, args...)
+}
+
+func (lw *logWriter) Log(handle Handle, args ...interface{}) error {
+	l := lw.loggers[handle]
 
 	if len(l.Kinds) != len(args) {
 		panic("Number of args does not match log line")
@@ -612,9 +652,9 @@ func Log(handle Handle, args ...interface{}) error {
 		}
 	}
 
-	writeLock.Lock()
-	_, err := w.Write(*buf)
-	writeLock.Unlock()
+	lw.writeLock.Lock()
+	_, err := lw.w.Write(*buf)
+	lw.writeLock.Unlock()
 
 	bufpool.Put(buf)
 	return err
