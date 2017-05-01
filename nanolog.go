@@ -163,45 +163,50 @@ type Logger struct {
 
 var defaultLogWriter = New()
 
+type LogWriter interface {
+	// SetWriter will set up efficient writing for the log to the output stream given.
+	// A raw IO stream is best. The first time SetWriter is called any logs that were
+	// created or posted before the call will be sent to the writer all in one go.
+	SetWriter(new io.Writer) error
+	// Flush ensures all log entries written up to this point are written to the underlying io.Writer
+	Flush() error
+	// AddLogger initializes a logger and returns a handle for future logging
+	AddLogger(fmt string) Handle
+	// Log logs to the output stream
+	Log(handle Handle, args ...interface{}) error
+}
+
 type logWriter struct {
 	initBuf  *bytes.Buffer
 	w        *bufio.Writer
 	firstSet bool
 
-	bufpool   *sync.Pool
 	writeLock sync.Locker
 
 	loggers       []Logger
 	curLoggersIdx *uint32
 }
 
-func New() *logWriter {
+// New creates a new LogWriter
+func New() LogWriter {
 	initBuf := &bytes.Buffer{}
 	return &logWriter{
-		initBuf:  initBuf,
-		w:        bufio.NewWriter(initBuf),
-		firstSet: true,
-		bufpool: &sync.Pool{
-			New: func() interface{} {
-				temp := make([]byte, 1024) // 1k default size
-				return &temp
-			},
-		},
+		initBuf:       initBuf,
+		w:             bufio.NewWriter(initBuf),
+		firstSet:      true,
 		writeLock:     new(sync.Mutex),
 		loggers:       make([]Logger, MaxLoggers),
 		curLoggersIdx: new(uint32),
 	}
 }
 
+// SetWriter calls LogWriter.SetWriter on the default log writer.
 func SetWriter(new io.Writer) error {
 	return defaultLogWriter.SetWriter(new)
 }
 
-// SetWriter will set up efficient writing for the log to the output stream given.
-// A raw IO stream is best. The first time SetWriter is called any logs that were
-// created or posted before the call will be sent to the writer all in one go.
 func (lw *logWriter) SetWriter(new io.Writer) error {
-	// grab write lock to ensure no prblems
+	// grab write lock to ensure no problems
 	lw.writeLock.Lock()
 	defer lw.writeLock.Unlock()
 
@@ -221,11 +226,11 @@ func (lw *logWriter) SetWriter(new io.Writer) error {
 	return nil
 }
 
+// Flush calls LogWriter.Flush on the default log writer.
 func Flush() error {
 	return defaultLogWriter.Flush()
 }
 
-// Flush ensures all log entries written up to this point are written to the underlying io.Writer
 func (lw *logWriter) Flush() error {
 	// grab write lock to ensure no prblems
 	lw.writeLock.Lock()
@@ -234,11 +239,11 @@ func (lw *logWriter) Flush() error {
 	return lw.w.Flush()
 }
 
+// AddLogger calls LogWriter.AddLogger on the default log writer.
 func AddLogger(fmt string) Handle {
 	return defaultLogWriter.AddLogger(fmt)
 }
 
-// AddLogger initializes a logger and returns a handle for future logging
 func (lw *logWriter) AddLogger(fmt string) Handle {
 	// save some kind of string format to the file
 	idx := atomic.AddUint32(lw.curLoggersIdx, 1) - 1
@@ -509,11 +514,11 @@ var (
 	}
 )
 
+// Log calls LogWriter.Log on the default log writer.
 func Log(handle Handle, args ...interface{}) error {
 	return defaultLogWriter.Log(handle, args...)
 }
 
-// Log logs to the output stream for the logging package
 func (lw *logWriter) Log(handle Handle, args ...interface{}) error {
 	l := lw.loggers[handle]
 
