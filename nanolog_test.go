@@ -873,7 +873,7 @@ func BenchmarkInterpolations(b *testing.B) {
 					b.ResetTimer()
 
 					for i := 0; i < b.N; i++ {
-						Log(h, args...)
+						lw.Log(h, args...)
 					}
 				})
 			}
