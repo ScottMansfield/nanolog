@@ -251,7 +251,7 @@ func TestAddLoggerLimit(t *testing.T) {
 func TestParseLogLine(t *testing.T) {
 	t.Run("Correct", func(t *testing.T) {
 		f := "foo thing bar thing %i64. Fubar %s foo. sadf %% asdf %u32 sdfasfasdfasdffds %u32."
-		l, segs := parseLogLine(f)
+		l := parseLogLine(f)
 
 		// verify logger kinds
 		if len(l.Kinds) != 4 {
@@ -259,8 +259,8 @@ func TestParseLogLine(t *testing.T) {
 		}
 
 		// verify logger segs
-		if len(segs) != 5 {
-			t.Fatalf("Expected 5 segs but got %v", len(segs))
+		if len(l.Segs) != 5 {
+			t.Fatalf("Expected 5 segs but got %v", len(l.Segs))
 		}
 	})
 
@@ -801,14 +801,13 @@ func BenchmarkAddLogger(b *testing.B) {
 }
 
 var (
-	testLoggerSink   Logger
-	testSegmentsSink []string
+	testLoggerSink Logger
 )
 
 func BenchmarkParseLogLine(b *testing.B) {
 	f := "The operation %s could not be completed. Wanted %u64 bar %c128 %b %{s} %{i32}"
 	for i := 0; i < b.N; i++ {
-		testLoggerSink, testSegmentsSink = parseLogLine(f)
+		testLoggerSink = parseLogLine(f)
 	}
 }
 

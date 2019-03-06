@@ -125,6 +125,7 @@ import (
 	"io"
 	"math"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unicode/utf8"
@@ -155,7 +156,7 @@ const (
 
 // Logger is the internal struct representing the runtime state of the loggers.
 // The Segs field is not used during logging; it is only used in the inflate
-// utility
+// utility but is kept during execution in case it is needed for debugging
 type Logger struct {
 	Kinds []reflect.Kind
 	Segs  []string
@@ -174,6 +175,8 @@ type LogWriter interface {
 	AddLogger(fmt string) Handle
 	// Log logs to the output stream
 	Log(handle Handle, args ...interface{}) error
+	// Debug dump of information about a handle
+	DebugDump(handle Handle) string
 }
 
 type logWriter struct {
@@ -252,15 +255,15 @@ func (lw *logWriter) AddLogger(fmt string) Handle {
 		panic("Too many loggers")
 	}
 
-	l, segs := parseLogLine(fmt)
+	l := parseLogLine(fmt)
 	lw.loggers[idx] = l
 
-	lw.writeLogDataToFile(idx, l.Kinds, segs)
+	lw.writeLogLineHeader(idx, l.Kinds, l.Segs)
 
 	return Handle(idx)
 }
 
-func parseLogLine(gold string) (Logger, []string) {
+func parseLogLine(gold string) Logger {
 	// make a copy we can destroy
 	tmp := gold
 	f := &tmp
@@ -438,7 +441,8 @@ func parseLogLine(gold string) (Logger, []string) {
 
 	return Logger{
 		Kinds: kinds,
-	}, segs
+		Segs:  segs,
+	}
 }
 
 func peek(s *string) rune {
@@ -462,7 +466,7 @@ func next(s *string) rune {
 	return r
 }
 
-func (lw *logWriter) writeLogDataToFile(idx uint32, kinds []reflect.Kind, segs []string) {
+func (lw *logWriter) writeLogLineHeader(idx uint32, kinds []reflect.Kind, segs []string) {
 	buf := &bytes.Buffer{}
 	b := make([]byte, 4)
 
@@ -658,4 +662,31 @@ func (lw *logWriter) Log(handle Handle, args ...interface{}) error {
 
 	bufpool.Put(buf)
 	return err
+}
+
+// DebugDump calls LogWriter.DebugDump on the default log writer.
+func DebugDump(handle Handle) string {
+	return defaultLogWriter.DebugDump(handle)
+}
+
+func (lw *logWriter) DebugDump(handle Handle) string {
+	sb := &strings.Builder{}
+	l := lw.loggers[handle]
+
+	for i := 0; i < len(l.Kinds); i++ {
+		sb.WriteString("+\"")
+		sb.WriteString(l.Segs[i])
+		sb.WriteString("\"+")
+
+		sb.WriteString("<")
+		sb.WriteString(l.Kinds[i].String())
+		sb.WriteString(">")
+	}
+
+	// write the last segment
+	sb.WriteString("+\"")
+	sb.WriteString(l.Segs[len(l.Segs)-1])
+	sb.WriteString("\"+")
+
+	return sb.String()
 }
